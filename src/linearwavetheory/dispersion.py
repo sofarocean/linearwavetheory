@@ -81,6 +81,7 @@ def inverse_intrinsic_dispersion_relation(
     maximum_number_of_iterations: int = MAXIMUM_NUMBER_OF_ITERATIONS,
     relative_tolerance: float = RELATIVE_TOLERANCE,
     absolute_tolerance: float = ABSOLUTE_TOLERANCE,
+    limit="none",
 ) -> np.ndarray:
     """
     Find the wavenumber magnitude for a given intrinsic radial frequency through inversion of the dispersion relation
@@ -128,8 +129,40 @@ def inverse_intrinsic_dispersion_relation(
 
     :param absolute_tolerance: Absolute accuracy used in the stopping criterium. Default is np.inf.
 
+    :param limit: Use a limiting form. Can be: 'deep', 'shallow', 'cappilary', 'gravity' or 'none'.
+        Default is 'none' (use the full relation). `gravity` is the same as calling the function with the
+        kinematic_surface_tension set to zero.
+
     :return: The wavenumber as a 1D numpy array. Note that even if a scalar is provided for the intrinsic angular
         frequency, a 1D array is returned.
+
+    Example
+    ```python
+    >>> from linearwavetheory import inverse_intrinsic_dispersion_relation
+    >>> import numpy as np
+    >>> import matplotlib.pyplot as plt
+    >>> f = np.linspace(0., 20, 1001)
+    >>> w = 2 * np.pi * f
+    >>> depth = 100
+
+    >>> k1 = inverse_intrinsic_dispersion_relation(w, depth)
+    >>> k2 = inverse_intrinsic_dispersion_relation(w, depth,kinematic_surface_tension=0.0)
+    >>> k3 = inverse_intrinsic_dispersion_relation(w, depth,limit='deep')
+    >>> k4 = inverse_intrinsic_dispersion_relation(w, depth,limit='shallow')
+    >>> k5 = inverse_intrinsic_dispersion_relation(w, depth,limit='capillary')
+    >>> plt.plot(f, k1, label='with surface tension')
+    >>> plt.plot(f, k2, label='without surface tension')
+    >>> plt.plot(f, k3, label='deep water limit')
+    >>> plt.plot(f, k4, label='shallow water limit')
+    >>> plt.plot(f, k5, label='capillary limit')
+    >>> plt.xlabel('frequency [Hz]')
+    >>> plt.ylabel('wavenumber [rad/m]')
+    >>> plt.grid('on', which='both')
+    >>> plt.xscale('log')
+    >>> plt.yscale('log')
+    >>> plt.legend()
+    >>> plt.show()
+    ```
     """
 
     # Numba does not recognize "atleast_1d" for scalars
@@ -146,7 +179,7 @@ def inverse_intrinsic_dispersion_relation(
 
     wavenumber_estimate = np.empty_like(intrinsic_angular_frequency)
     for jj in range(0, len(intrinsic_angular_frequency)):
-        wavenumber_estimate[jj] = inverse_intrinsic_dispersion_relation_scalar(
+        wavenumber_estimate[jj] = _inverse_intrinsic_dispersion_relation_scalar(
             intrinsic_angular_frequency[jj],
             depth[jj],
             kinematic_surface_tension,
@@ -154,13 +187,14 @@ def inverse_intrinsic_dispersion_relation(
             maximum_number_of_iterations,
             relative_tolerance,
             absolute_tolerance,
+            limit,
         )
 
     return wavenumber_estimate
 
 
 @jit(**numba_default)
-def inverse_intrinsic_dispersion_relation_scalar(
+def _inverse_intrinsic_dispersion_relation_scalar(
     intrinsic_angular_frequency: float,
     depth: float = np.inf,
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
@@ -168,8 +202,11 @@ def inverse_intrinsic_dispersion_relation_scalar(
     maximum_number_of_iterations: int = MAXIMUM_NUMBER_OF_ITERATIONS,
     relative_tolerance: float = RELATIVE_TOLERANCE,
     absolute_tolerance: float = ABSOLUTE_TOLERANCE,
+    limit="none",
 ) -> float:
     """
+    ** Internal function. Call inverse_intrinsic_dispersion_relation instead. **
+
     Find the wavenumber magnitude for a given intrinsic radial frequency through inversion of the dispersion relation
     for linear gravity waves including suface tension effects, i.e. solve for wavenumber k in:
 
@@ -244,6 +281,15 @@ def inverse_intrinsic_dispersion_relation_scalar(
 
     if absolute_tolerance <= 0:
         raise ValueError("absolute_tolerance must be positive.")
+
+    if limit == "deep":
+        return intrinsic_angular_frequency**2 / grav
+    elif limit == "shallow":
+        return intrinsic_angular_frequency / np.sqrt(grav * depth)
+    elif limit == "capillary":
+        return (intrinsic_angular_frequency**2 / kinematic_surface_tension) ** (1 / 3)
+    elif limit == "gravity":
+        kinematic_surface_tension = 0.0
 
     # == Initial Estimate ==
     if intrinsic_angular_frequency > np.sqrt(grav / depth):
