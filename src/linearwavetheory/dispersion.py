@@ -58,7 +58,7 @@ Authors: Pieter Bart Smit
 """
 
 import numpy as np
-from numba import jit
+from numba import jit, vectorize
 from ._tools import atleast_1d, _to_2d_array
 from ._constants import (
     GRAV,
@@ -386,14 +386,6 @@ def intrinsic_dispersion_relation(
 
     :return: The intrinsic angular frequency as a 1 dimensional numpy array.
     """
-    wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
-
-    depth = atleast_1d(depth)
-    if len(depth) == 1:
-        depth = np.full_like(wavenumber_magnitude, depth[0], dtype=depth.dtype)
-
-    if not len(wavenumber_magnitude) == len(depth):
-        raise ValueError("wavenumber_magnitude and depth must have the same length.")
 
     if kinematic_surface_tension < 0:
         raise ValueError("kinematic_surface_tension must be non-negative.")
@@ -401,27 +393,32 @@ def intrinsic_dispersion_relation(
     if grav < 0:
         raise ValueError("grav must be positive.")
 
-    intrinsic_angular_frequency = np.empty_like(wavenumber_magnitude)
-    for jj in range(0, len(wavenumber_magnitude)):
-        if wavenumber_magnitude[jj] == 0:
-            intrinsic_angular_frequency[jj] = 0
-            continue
+    wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
+    if np.any(wavenumber_magnitude < 0.0):
+        raise ValueError("wavenumber_magnitude must be non-negative.")
 
-        if wavenumber_magnitude[jj] < 0:
-            raise ValueError("wavenumber_magnitude must be non-negative.")
+    return _intrinsic_dispersion_relation_ufunc(
+        wavenumber_magnitude, depth, kinematic_surface_tension, grav
+    )
 
-        if depth[jj] <= 0:
-            intrinsic_angular_frequency[jj] = np.nan
-            continue
 
-        intrinsic_angular_frequency[jj] = np.sqrt(
-            (
-                grav * wavenumber_magnitude[jj]
-                + kinematic_surface_tension * wavenumber_magnitude[jj] ** 3
-            )
-            * np.tanh(wavenumber_magnitude[jj] * depth[jj])
+@vectorize()
+def _intrinsic_dispersion_relation_ufunc(
+    wavenumber_magnitude, depth, kinematic_surface_tension, grav
+):
+    if wavenumber_magnitude == 0.0:
+        return 0.0
+
+    if depth <= 0:
+        return np.nan
+
+    return np.sqrt(
+        (
+            grav * wavenumber_magnitude
+            + kinematic_surface_tension * wavenumber_magnitude**3
         )
-    return intrinsic_angular_frequency
+        * np.tanh(wavenumber_magnitude * depth)
+    )
 
 
 @jit(**numba_default)
@@ -531,7 +528,7 @@ def intrinsic_phase_speed(
     :return: The intrinsic phase speed as a 1 dimensional numpy array.
     """
     wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
-    _intrinsic_phase_speed = np.zeros(wavenumber_magnitude.shape)
+    depth = atleast_1d(depth)
 
     if grav <= 0:
         raise ValueError("Gravitational acceleration must be positive")
@@ -539,34 +536,28 @@ def intrinsic_phase_speed(
     if kinematic_surface_tension <= 0:
         raise ValueError("Kinematic surface tension must be positive")
 
-    depth = atleast_1d(depth)
-    if len(depth) == 1:
-        depth = np.full_like(wavenumber_magnitude, depth[0], dtype=depth.dtype)
+    if np.any(wavenumber_magnitude < 0):
+        raise ValueError("Wavenumber magnitude must be positive")
 
-    if not len(wavenumber_magnitude) == len(depth):
-        raise ValueError("wavenumber_magnitude and depth must have the same length.")
+    return _intrinsic_phase_speed_ufunc(
+        wavenumber_magnitude, depth, kinematic_surface_tension, grav
+    )
 
-    for jj in range(0, len(wavenumber_magnitude)):
-        if wavenumber_magnitude[jj] < 0:
-            raise ValueError("Negative wavenumber encountered")
 
-        if depth[jj] <= 0:
-            _intrinsic_phase_speed[jj] = np.nan
-            continue
+@vectorize()
+def _intrinsic_phase_speed_ufunc(
+    wavenumber_magnitude, depth, kinematic_surface_tension, grav
+):
+    if depth <= 0:
+        return np.nan
 
-        if wavenumber_magnitude[jj] == 0:
-            _intrinsic_phase_speed[jj] = np.sqrt(grav * depth[jj])
-            continue
+    if wavenumber_magnitude == 0:
+        return np.sqrt(grav * depth)
 
-        _intrinsic_phase_speed[jj] = np.sqrt(
-            (
-                grav / wavenumber_magnitude[jj]
-                + kinematic_surface_tension * wavenumber_magnitude[jj]
-            )
-            * np.tanh(wavenumber_magnitude[jj] * depth[jj])
-        )
-
-    return _intrinsic_phase_speed
+    return np.sqrt(
+        (grav / wavenumber_magnitude + kinematic_surface_tension * wavenumber_magnitude)
+        * np.tanh(wavenumber_magnitude * depth)
+    )
 
 
 @jit(**numba_default)
@@ -737,7 +728,7 @@ def intrinsic_group_speed(
     :return: The intrinsic group speed as a 1 dimensional numpy array.
     """
     wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
-    _intrinsic_group_speed = np.zeros(wavenumber_magnitude.shape)
+    depth = atleast_1d(depth)
 
     if grav <= 0:
         raise ValueError("Gravitational acceleration must be positive")
@@ -745,41 +736,49 @@ def intrinsic_group_speed(
     if kinematic_surface_tension <= 0:
         raise ValueError("Kinematic surface tension must be positive")
 
-    depth = atleast_1d(depth)
-    if len(depth) == 1:
-        depth = np.full_like(wavenumber_magnitude, depth[0], dtype=depth.dtype)
+    if np.any(wavenumber_magnitude < 0):
+        raise ValueError("Wavenumber magnitude must be positive")
 
-    if not len(wavenumber_magnitude) == len(depth):
-        raise ValueError("wavenumber_magnitude and depth must have the same length.")
+    return _intrinsic_group_speed_ufunc(
+        wavenumber_magnitude, depth, kinematic_surface_tension, grav
+    )
 
-    for jj in range(0, len(wavenumber_magnitude)):
-        if wavenumber_magnitude[jj] < 0:
-            raise ValueError("Negative wavenumber encountered")
 
-        if depth[jj] <= 0:
-            _intrinsic_group_speed[jj] = np.nan
-            continue
+@vectorize()
+def _intrinsic_group_speed_ufunc(
+    wavenumber_magnitude,
+    depth,
+    kinematic_surface_tension,
+    grav,
+) -> np.ndarray:
+    """
+    The intrinsic group speed for linear gravity-capillary waves. I.e.
 
-        if wavenumber_magnitude[jj] == 0:
-            _intrinsic_group_speed[jj] = np.sqrt(grav * depth[jj])
-            continue
+        cg = dw / dk
 
-        surface_tension_term = np.sqrt(
-            1 + kinematic_surface_tension * wavenumber_magnitude[jj] ** 2 / grav
-        )
-        kd = wavenumber_magnitude[jj] * depth[jj]
-        n = 1 / 2 + kd / np.sinh(2 * kd)
-        c = np.sqrt(grav / wavenumber_magnitude[jj] * np.tanh(kd))
-        w = wavenumber_magnitude[jj] * c
+    """
+    if depth <= 0:
+        return np.nan
 
-        _intrinsic_group_speed[jj] = (
-            n * c * surface_tension_term
-            + w
-            * wavenumber_magnitude[jj]
-            * kinematic_surface_tension
-            / grav
-            / surface_tension_term
-        )
+    if wavenumber_magnitude == 0:
+        return np.sqrt(grav * depth)
+
+    surface_tension_term = np.sqrt(
+        1 + kinematic_surface_tension * wavenumber_magnitude**2 / grav
+    )
+    kd = wavenumber_magnitude * depth
+    n = 1 / 2 + kd / np.sinh(2 * kd)
+    c = np.sqrt(grav / wavenumber_magnitude * np.tanh(kd))
+    w = wavenumber_magnitude * c
+
+    _intrinsic_group_speed = (
+        n * c * surface_tension_term
+        + w
+        * wavenumber_magnitude
+        * kinematic_surface_tension
+        / grav
+        / surface_tension_term
+    )
     return _intrinsic_group_speed
 
 
