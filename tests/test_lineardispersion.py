@@ -1,4 +1,4 @@
-import linearwavetheory.dispersion as ld
+import src.linearwavetheory.dispersion as ld
 import numpy as np
 from numpy.testing import assert_allclose
 
@@ -259,7 +259,7 @@ def test_intrinsic_phase_speed():
     depth = np.full(10, 1000.0)
     capillary_omega = np.sqrt(ld.KINEMATIC_SURFACE_TENSION * k)
     omega = ld.intrinsic_phase_speed(k, depth)
-    assert_allclose(omega, capillary_omega, atol=np.inf, rtol=ld.RELATIVE_TOLERANCE)
+    assert_allclose(omega, capillary_omega, atol=0, rtol=ld.RELATIVE_TOLERANCE)
 
     # Test input verification
     try:
@@ -290,3 +290,114 @@ def test_intrinsic_phase_speed():
 
     # nan for neg depth
     assert np.isnan(ld.intrinsic_phase_speed(1.0, -10)[0])
+
+
+def test_intrinsic_group_speed():
+    """
+    Test if the intrinsic dispersion relation is correct.
+    """
+
+    # Shallow water
+    k = np.linspace(0, 0.01, 100)
+    depth = np.full(100, 1.0)
+
+    shallow_water_c = np.sqrt(ld.GRAV * depth)
+    c = ld.intrinsic_group_speed(k, depth)
+    assert_allclose(c, shallow_water_c, atol=0, rtol=ld.RELATIVE_TOLERANCE)
+
+    # test with scalar depth
+    k = np.linspace(0, 0.01, 100)
+    depth = 1
+
+    shallow_water_c = np.sqrt(ld.GRAV * depth) * np.ones(100)
+    c = ld.intrinsic_group_speed(k, depth)
+    assert_allclose(c, shallow_water_c, atol=0, rtol=ld.RELATIVE_TOLERANCE)
+
+    # Deep water
+    k = np.linspace(0.1, 1, 100)
+    depth = np.full(100, 1000.0)
+    deep_water_omega = np.sqrt(ld.GRAV / k) / 2
+    omega = ld.intrinsic_group_speed(k, depth)
+    assert_allclose(omega, deep_water_omega, atol=0, rtol=ld.RELATIVE_TOLERANCE)
+
+    # Capillary waves
+    k = np.linspace(10000, 100000, 10)
+    depth = np.full(10, 1000.0)
+    capillary_omega = 3 * np.sqrt(ld.KINEMATIC_SURFACE_TENSION * k) / 2
+    omega = ld.intrinsic_group_speed(k, depth)
+    assert_allclose(omega, capillary_omega, atol=0, rtol=ld.RELATIVE_TOLERANCE)
+
+    # Test input verification
+    try:
+        solution = ld.intrinsic_group_speed(1.0, 10, kinematic_surface_tension=-1)
+        assert False
+    except ValueError:
+        pass
+
+    try:
+        solution = ld.intrinsic_group_speed(1.0, 10, grav=-1)
+        assert False
+    except ValueError:
+        pass
+
+    try:
+        # error on negative wavenumber magnitude
+        solution = ld.intrinsic_group_speed(-1.0, 10)
+        assert False
+    except ValueError:
+        pass
+
+    try:
+        # error on negative wavenumber magnitude
+        solution = ld.intrinsic_phase_speed(-1.0, np.array([10, 10]))
+        assert False
+    except ValueError:
+        pass
+
+    # nan for neg depth
+    assert np.isnan(ld.intrinsic_phase_speed(1.0, -10)[0])
+
+
+def test_encounter_group_phase_velocity_speed():
+    def _helper(k, d, u=(0, 0), o=(0, 0)):
+        cg = ld.encounter_group_velocity(k, d, u, o)
+        c = ld.encounter_phase_velocity(k, d, u, o)
+        cg_mag = ld.encounter_group_speed(k, d, u, o)
+        c_mag = ld.encounter_group_velocity(k, d, u, o)
+        return cg, c
+
+    # test call sequences
+    # --------------------
+    # scalars
+    try:
+        cg, c = _helper(0.1, 10)
+        assert False
+    except ValueError:
+        pass
+
+    # 1d vec, scalar depth
+    cg, c = _helper((0.1, 0), 10)
+
+    # 2d vec, scalar depth
+    cg, c = _helper(((0.1, 0), (0.2, 0)), 10)
+
+    # 2d vec, depth vec
+    cg, c = _helper(((0.1, 0), (0.2, 0)), (10, 11))
+
+    # 1d vec, scalar depth, scalar u, scalar o
+    try:
+        cg, c = _helper((0.1, 0), 10, 1, 1)
+        assert False
+    except:
+        pass
+
+    # 1d vec, scalar depth, vec  u, vec o
+    cg, c = _helper((0.1, 0), 10, (1, 0), (0.1, 0))
+
+    # 2d vec, depth vec, vec  u, vec o
+    cg, c = _helper(((0.1, 0), (0.2, 0)), (10, 11), (1, 0), (0.1, 0))
+
+    # 2d vec, depth vec, 2d vec  u, 2d vec o
+    cg, c = _helper(
+        ((0.1, 0), (0.2, 0)), (10, 11), ((0.1, 0), (0.2, 0)), ((0.1, 0), (0.2, 0))
+    )

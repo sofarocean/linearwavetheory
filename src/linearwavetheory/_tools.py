@@ -51,8 +51,6 @@ def _to_2d_array(x, target_rows=0):
 
     """
     target_cols = 2
-    if x is None:
-        return np.zeros((target_rows, target_cols))
 
     x = atleast_2d(x)
     if target_rows == 0:

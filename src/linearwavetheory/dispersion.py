@@ -482,7 +482,7 @@ def intrinsic_phase_speed(
 
     :param grav: gravitational acceleration in m/s^2. Default is 9.81 m/s^2.
 
-    :return: The intrinsic angular frequency as a 1 dimensional numpy array.
+    :return: The intrinsic phase speed as a 1 dimensional numpy array.
     """
     wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
     _intrinsic_phase_speed = np.zeros(wavenumber_magnitude.shape)
@@ -573,7 +573,9 @@ def encounter_phase_velocity(
     ) - _to_2d_array(
         observer_velocity, target_rows=intrinsic_wavenumber_vector.shape[0]
     )
-    wavenumber_magnitude = np.linalg.norm(intrinsic_wavenumber_vector, axis=-1)
+    wavenumber_magnitude = np.sqrt(
+        np.sum(intrinsic_wavenumber_vector * intrinsic_wavenumber_vector, axis=-1)
+    )
     _intrinsic_phase_speed = intrinsic_phase_speed(
         wavenumber_magnitude,
         depth,
@@ -605,8 +607,8 @@ def encounter_phase_velocity(
 def encounter_phase_speed(
     intrinsic_wavenumber_vector,
     depth=np.inf,
-    ambient_current_velocity=None,
-    observer_velocity=None,
+    ambient_current_velocity=(0.0, 0.0),
+    observer_velocity=(0.0, 0.0),
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
     grav=GRAV,
 ) -> np.ndarray:
@@ -644,7 +646,7 @@ def encounter_phase_speed(
 
     :return: A 1D numpy array with shape (N,) where N is the number of wavenumbers.
     """
-    c = encounter_phase_velocity(
+    _encounter_phase_velocity = encounter_phase_velocity(
         intrinsic_wavenumber_vector,
         depth,
         ambient_current_velocity=ambient_current_velocity,
@@ -652,7 +654,9 @@ def encounter_phase_speed(
         kinematic_surface_tension=kinematic_surface_tension,
         grav=grav,
     )
-    return np.linalg.norm(c, axis=-1)
+    return np.sqrt(
+        np.sum(_encounter_phase_velocity * _encounter_phase_velocity, axis=-1)
+    )
 
 
 @jit(**numba_default)
@@ -663,100 +667,203 @@ def intrinsic_group_speed(
     grav=GRAV,
 ) -> np.ndarray:
     """
-    :param wavenumber: Wavenumber (rad/m)
-    :param depth: Depth (m)
-    :param grav: Gravitational acceleration (m/s^2)
-    :return:
+    The intrinsic group speed for linear gravity-capillary waves. I.e.
+
+        cg = dw / dk
+
+    NOTE:
+        - if the wavenumber magnitude is zero, the group speed is defined as it's limiting value as k-> 0
+            (the shallow water group speed).
+        - if the depth is smaller or equal to zero, the group speed is undefined and np.nan is returned.
+        - if the wavenumber magnitude is negative, we return an error (undefined).
+
+    :param  wavenumber_magnitude: The wavenumber_magnitude. Can be a scalar or a 1 dimensional numpy array.
+
+    :param depth: depth in meters. Can be a scalar or a 1 dimensional numpy array. If a 1d array is provided, it must
+        have the same length as the wavenumber_magnitude array, and calculation is performed pairwise. I.e.
+        w[j] is calculated for k[j] and d[j].
+
+    :param kinematic_surface_tension: kinematic surface tension in m^3/s^2. Per default set to 0.0728 N/m (water at 20C)
+        divided by density of seawater (1025 kg/m^3).
+
+    :param grav: gravitational acceleration in m/s^2. Default is 9.81 m/s^2.
+
+    :return: The intrinsic group speed as a 1 dimensional numpy array.
     """
-    wavenumber_magnitude = np.atleast_1d(wavenumber_magnitude)
+    wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
+    _intrinsic_group_speed = np.zeros(wavenumber_magnitude.shape)
 
-    kd = wavenumber_magnitude * depth
-    intrinsic_angular_frequency = np.sqrt(grav * wavenumber_magnitude * np.tanh(kd))
-    cg = (
-        (1 / 2 + kd / np.sinh(2 * kd))
-        * intrinsic_angular_frequency
-        / wavenumber_magnitude
-    )
+    if grav <= 0:
+        raise ValueError("Gravitational acceleration must be positive")
 
-    if not (kinematic_surface_tension > 0.0):
-        return cg
+    if kinematic_surface_tension <= 0:
+        raise ValueError("Kinematic surface tension must be positive")
 
-    else:
+    depth = atleast_1d(depth)
+    if len(depth) == 1:
+        depth = np.full_like(wavenumber_magnitude, depth[0], dtype=depth.dtype)
+
+    if not len(wavenumber_magnitude) == len(depth):
+        raise ValueError("wavenumber_magnitude and depth must have the same length.")
+
+    for jj in range(0, len(wavenumber_magnitude)):
+        if wavenumber_magnitude[jj] < 0:
+            raise ValueError("Negative wavenumber encountered")
+
+        if depth[jj] <= 0:
+            _intrinsic_group_speed[jj] = np.nan
+            continue
+
+        if wavenumber_magnitude[jj] == 0:
+            _intrinsic_group_speed[jj] = np.sqrt(grav * depth[jj])
+            continue
+
         surface_tension_term = np.sqrt(
-            1 + kinematic_surface_tension * wavenumber_magnitude**2 / grav
+            1 + kinematic_surface_tension * wavenumber_magnitude[jj] ** 2 / grav
         )
+        kd = wavenumber_magnitude[jj] * depth[jj]
+        n = 1 / 2 + kd / np.sinh(2 * kd)
+        c = np.sqrt(grav / wavenumber_magnitude[jj] * np.tanh(kd))
+        w = wavenumber_magnitude[jj] * c
 
-        return (
-            cg * surface_tension_term
-            + intrinsic_angular_frequency
-            * wavenumber_magnitude
+        _intrinsic_group_speed[jj] = (
+            n * c * surface_tension_term
+            + w
+            * wavenumber_magnitude[jj]
             * kinematic_surface_tension
             / grav
             / surface_tension_term
         )
+    return _intrinsic_group_speed
 
 
 @jit(**numba_default)
 def encounter_group_velocity(
-    wavenumber,
+    intrinsic_wavenumber_vector,
     depth=np.inf,
-    ambient_current_velocity=None,
-    observer_velocity=None,
+    ambient_current_velocity=(0.0, 0.0),
+    observer_velocity=(0.0, 0.0),
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
     grav=GRAV,
 ) -> np.ndarray:
     """
-    :param wavenumber: Wavenumber (rad/m)
-    :param depth: Depth (m)
-    :param grav: Gravitational acceleration (m/s^2)
-    :return:
-    """
-    wavenumber = _to_2d_array(wavenumber)
-    ambient_current_velocity = _to_2d_array(
-        ambient_current_velocity, target_rows=wavenumber.shape[0]
-    )
-    observer_velocity = _to_2d_array(observer_velocity, target_rows=wavenumber.shape[0])
-    relative_velocity = ambient_current_velocity - observer_velocity
+    The group VELOCITY of a wave moving through an ambient current field with velocity ambient_current_velocity
+    (defauly 0) as observed by an observer moving with velocity observer_velocity (default 0) relative to the
+    earth reference frame.
 
-    wavenumber_magnitude = np.linalg.norm(wavenumber, axis=-1)
-    cg_int = intrinsic_group_speed(
+    We calculate the result as a function of the intrinsic wavenumber, with magnitude and direction such that the
+    wavenumber points in the direction of wave propagation in the intrinsic frame of reference. Depending on the
+    magnitude of the ambient current and the wavenumber, this wavenumber may differ in sign -
+    though magnitude is preserved for all observers.
+
+    Input
+    -----
+    :param intrinsic_wavenumber_vector: Wavenumber (rad/m) in the intrinsic frame of reference of the wave specified as a 1D
+    numpy array (kx,ky), or as a 2D numpy array with shape (N,2) where N is the number of wavenumbers.
+
+    :param depth: Depth (m). May be a scalar or a numpy array. If a numpy array, must have the same number of rows as
+    the number of wavenumbers in intrinsic_wavenumber.
+
+    :param ambient_current_velocity: current (m/s) in the earth reference frame specified as a 1D numpy array (u,v),
+    which will be broadcast to an array of the same shape as the wavenumber array, or as a 2D numpy array with the same
+    shape as the wavenumber array, in which case the j^th row will be used for the j^th wavenumber. Default (0,0).
+
+    :param observer_velocity: velocity (m/s) of the observer in the earth reference frame specified as a 1D numpy array
+    (u,v), which will be broadcast to an array of the same shape as the wavenumber array, or as a 2D numpy array with
+    the same shape as the wavenumber array, in which case the j^th row will be used for the j^th wavenumber.
+    Default (0,0).
+
+    :param kinematic_surface_tension: Kinematic surface tension parameter. Per default set to 0.0728 N/m (water at 20C)
+    divided by density of seawater (1025 kg/m^3).
+
+    :param grav: Gravitational acceleration (m/s^2). Default 9.81 m/s^2.
+
+    :return: A 2D numpy array with shape (N,2) where N is the number of wavenumbers.
+    """
+
+    intrinsic_wavenumber_vector = _to_2d_array(intrinsic_wavenumber_vector)
+    relative_velocity = _to_2d_array(
+        ambient_current_velocity, target_rows=intrinsic_wavenumber_vector.shape[0]
+    ) - _to_2d_array(
+        observer_velocity, target_rows=intrinsic_wavenumber_vector.shape[0]
+    )
+    wavenumber_magnitude = np.sqrt(
+        np.sum(intrinsic_wavenumber_vector * intrinsic_wavenumber_vector, axis=-1)
+    )
+    _intrinsic_group_speed = intrinsic_group_speed(
         wavenumber_magnitude,
         depth,
         kinematic_surface_tension=kinematic_surface_tension,
         grav=grav,
     )
 
-    cg = np.zeros(wavenumber.shape)
+    _encounter_group_velocity = np.zeros(intrinsic_wavenumber_vector.shape)
     for jj in range(0, len(wavenumber_magnitude)):
         if wavenumber_magnitude[jj] > 0:
-            cg[jj, 0] = (
-                cg_int[jj] * wavenumber[jj, 0] / wavenumber_magnitude[jj]
+            _encounter_group_velocity[jj, 0] = (
+                _intrinsic_group_speed[jj]
+                * intrinsic_wavenumber_vector[jj, 0]
+                / wavenumber_magnitude[jj]
                 + relative_velocity[jj, 0]
             )
-            cg[jj, 1] = (
-                cg_int[jj] * wavenumber[jj, 1] / wavenumber_magnitude[jj]
+
+            _encounter_group_velocity[jj, 1] = (
+                _intrinsic_group_speed[jj]
+                * intrinsic_wavenumber_vector[jj, 1]
+                / wavenumber_magnitude[jj]
                 + relative_velocity[jj, 1]
             )
-
-    return cg
+        else:
+            # group velocity is undefined for zero wavenumber.
+            _encounter_group_velocity[jj, 0] = np.nan
+            _encounter_group_velocity[jj, 1] = np.nan
+    return _encounter_group_velocity
 
 
 @jit(**numba_default)
 def encounter_group_speed(
     wavenumber,
     depth=np.inf,
-    ambient_current_velocity=None,
-    relative_velocity=None,
+    ambient_current_velocity=(0.0, 0.0),
+    relative_velocity=(0.0, 0.0),
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
     grav=GRAV,
 ) -> np.ndarray:
     """
-    :param wavenumber: Wavenumber (rad/m)
-    :param depth: Depth (m)
-    :param grav: Gravitational acceleration (m/s^2)
-    :return:
+    The group SPEED of a wave moving through an ambient current field with velocity ambient_current_velocity
+    (defauly 0) as observed by an observer moving with velocity observer_velocity (default 0) relative to the
+    earth reference frame.
+
+    We calculate the result as a function of the intrinsic wavenumber, with magnitude and direction such that the
+    wavenumber points in the direction of wave propagation in the intrinsic frame of reference. Depending on the
+    magnitude of the ambient current and the wavenumber, this wavenumber may differ in sign -
+    though magnitude is preserved for all observers.
+
+    Input
+    -----
+    :param intrinsic_wavenumber: Wavenumber (rad/m) in the intrinsic frame of reference of the wave specified as a 1D
+    numpy array (kx,ky), or as a 2D numpy array with shape (N,2) where N is the number of wavenumbers.
+
+    :param depth: Depth (m). May be a scalar or a numpy array. If a numpy array, must have the same number of rows as
+    the number of wavenumbers in intrinsic_wavenumber.
+
+    :param ambient_current_velocity: current (m/s) in the earth reference frame specified as a 1D numpy array (u,v),
+    which will be broadcast to an array of the same shape as the wavenumber array, or as a 2D numpy array with the same
+    shape as the wavenumber array, in which case the j^th row will be used for the j^th wavenumber. Default (0,0).
+
+    :param observer_velocity: velocity (m/s) of the observer in the earth reference frame specified as a 1D numpy array
+    (u,v), which will be broadcast to an array of the same shape as the wavenumber array, or as a 2D numpy array with
+    the same shape as the wavenumber array, in which case the j^th row will be used for the j^th wavenumber.
+    Default (0,0).
+
+    :param kinematic_surface_tension: Kinematic surface tension parameter. Per default set to 0.0728 N/m (water at 20C)
+    divided by density of seawater (1025 kg/m^3).
+
+    :param grav: Gravitational acceleration (m/s^2). Default 9.81 m/s^2.
+
+    :return: A 1D numpy array with shape (N,) where N is the number of wavenumbers.
     """
-    cg = encounter_group_velocity(
+    _encounter_group_velocity = encounter_group_velocity(
         wavenumber,
         depth,
         ambient_current_velocity,
@@ -764,4 +871,6 @@ def encounter_group_speed(
         kinematic_surface_tension=kinematic_surface_tension,
         grav=grav,
     )
-    return np.linalg.norm(cg, axis=-1)
+    return np.sqrt(
+        np.sum(_encounter_group_velocity * _encounter_group_velocity, axis=-1)
+    )
