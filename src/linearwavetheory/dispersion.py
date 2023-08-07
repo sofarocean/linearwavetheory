@@ -66,6 +66,7 @@ from ._constants import (
     MAXIMUM_NUMBER_OF_ITERATIONS,
     RELATIVE_TOLERANCE,
     ABSOLUTE_TOLERANCE,
+    DEEPWATER,
 )
 
 from ._numba_settings import numba_default
@@ -483,10 +484,13 @@ def _inverse_intrinsic_dispersion_relation_scalar(
 
         kd = wavenumber_estimate * depth
 
-        # Group speed in the absence of surface tension
-        cg = (1 / 2 + kd / np.sinh(2 * kd)) * np.sqrt(
-            grav / wavenumber_estimate * np.tanh(kd)
-        )
+        if kd > DEEPWATER:
+            cg = 0.5 * np.sqrt(grav / wavenumber_estimate)
+        else:
+            # Group speed in the absence of surface tension
+            cg = (1 / 2 + kd / np.sinh(2 * kd)) * np.sqrt(
+                grav / wavenumber_estimate * np.tanh(kd)
+            )
 
         # Calculate the derivative of the error function with respect to wavenumber.
         error_derivative_to_wavenumber = (
@@ -924,8 +928,13 @@ def _intrinsic_group_speed_ufunc(
         1 + kinematic_surface_tension * wavenumber_magnitude**2 / grav
     )
     kd = wavenumber_magnitude * depth
-    n = 1 / 2 + kd / np.sinh(2 * kd)
-    c = np.sqrt(grav / wavenumber_magnitude * np.tanh(kd))
+    # We need this as for np.inf the division is not defined.
+    if kd > DEEPWATER:
+        n = 0.5
+        c = np.sqrt(grav / wavenumber_magnitude)
+    else:
+        n = 1 / 2 + kd / np.sinh(2 * kd)
+        c = np.sqrt(grav / wavenumber_magnitude * np.tanh(kd))
     w = wavenumber_magnitude * c
 
     _intrinsic_group_speed = (
