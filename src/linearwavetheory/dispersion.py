@@ -169,25 +169,182 @@ def inverse_intrinsic_dispersion_relation(
     intrinsic_angular_frequency = atleast_1d(intrinsic_angular_frequency)
     depth = atleast_1d(depth)
 
-    if len(depth) == 1:
-        depth = np.full_like(intrinsic_angular_frequency, depth[0], dtype=depth.dtype)
+    if kinematic_surface_tension < 0:
+        raise ValueError("kinematic_surface_tension must be non-negative.")
 
-    if len(intrinsic_angular_frequency) != len(depth):
-        raise ValueError(
-            "intrinsic_angular_frequency and depth must have the same length."
+    if grav <= 0:
+        raise ValueError("grav must be positive.")
+
+    if maximum_number_of_iterations < 1:
+        raise ValueError("maximum_number_of_iterations must be at least 1.")
+
+    if relative_tolerance <= 0:
+        raise ValueError("relative_tolerance must be positive.")
+
+    if absolute_tolerance <= 0:
+        raise ValueError("absolute_tolerance must be positive.")
+
+    _limit = 0
+    # Passing as a number because numba vectorize does not support strings (it seems? - not well tested other than
+    # the naive approach of just passing a string fails.)
+    if limit == "deep":
+        _limit = 1
+    elif limit == "shallow":
+        _limit = 2
+    elif limit == "capillary":
+        _limit = 3
+    elif limit == "gravity":
+        _limit = 4
+
+    return _inverse_intrinsic_dispersion_relation_ufunc(
+        intrinsic_angular_frequency,
+        depth,
+        kinematic_surface_tension,
+        grav,
+        maximum_number_of_iterations,
+        relative_tolerance,
+        absolute_tolerance,
+        _limit,
+    )
+
+
+@vectorize()
+def _inverse_intrinsic_dispersion_relation_ufunc(
+    intrinsic_angular_frequency,
+    depth,
+    kinematic_surface_tension: float,
+    grav: float,
+    maximum_number_of_iterations: int,
+    relative_tolerance: float,
+    absolute_tolerance: float,
+    _limit: int,
+):
+    limit = "none"
+    """
+    ** Internal function. Call inverse_intrinsic_dispersion_relation instead. **
+
+    Find the wavenumber magnitude for a given intrinsic radial frequency through inversion of the dispersion relation
+    for linear gravity waves including suface tension effects, i.e. solve for wavenumber k in:
+
+        w = sqrt( ( ( g * k + tau * k**3 ) * tanh(k*d) )
+
+    with g gravitational acceleration, tau kinematice surface tension, k wavenumber and d depth. The dispersion relation
+    is solved using Newton Iteration with a first guess based on the dispersion relation for deep or shallow water
+    waves.
+
+    Notes:
+    - We only solve for real roots (no evanescent waves)
+    - For negative depths or zero depths we reduce nan (undefined)
+    - For zero frequency we return zero wavenumber
+    - Stopping criterium is based on relative and absolute tolerance:
+
+            | w - w_est | / w < relative_tolerance  (default 1e-3)
+
+            and
+
+            | w - w_est |  < absolute_tolerance  (default np.inf
+
+        where w is the intrinsic angular frequency and w_est is the estimated intrinsic angular frequency based on the
+        current estimate of the wavenumber. Per default we do not use the absolute stopping criterium.
+
+    - We exit when either maximum number of iterations (default 10 is reached, or tolerance is achieved.
+      Typically only 1 to 2 iterations are needed.
+
+    :param  intrinsic_angular_frequency: The radial frequency in rad/s as observed from a frame of reference moving with the
+        wave. Scalar.
+
+    :param depth: depth in meters. Scalar.
+
+    :param kinematic_surface_tension: kinematic surface tension in m^3/s^2. Per default set to 0.0728 N/m (water at 20C)
+        divided by density of seawater (1025 kg/m^3).
+
+    :param grav: gravitational acceleration in m/s^2. Default is 9.81 m/s^2.
+
+    :param maximum_number_of_iterations: Maximum number of iterations. Default is 10.
+
+    :param relative_tolerance: Relative accuracy used in the stopping criterium. Default is 1e-3.
+
+    :param absolute_tolerance: Absolute accuracy used in the stopping criterium. Default is np.inf.
+
+    :return: The wavenumber. Scalar.
+    """
+
+    # == Input Validation ==
+
+    # Since we can try to solve for the negative intrinsic frequency branch of the dispersion relation, we allow
+    # negative intrinsic frequencies. In this case the wavenumber magnitude is the same as for the positive branch.
+    intrinsic_angular_frequency = np.abs(intrinsic_angular_frequency)
+
+    # For zero or negative depths the solution is undefined.
+    if depth <= 0:
+        return np.nan
+
+    # For zero intrinsic frequency the wavenumber is zero
+    if intrinsic_angular_frequency == 0:
+        return 0.0
+
+    if limit == 0:
+        return intrinsic_angular_frequency**2 / grav
+    elif limit == 1:
+        return intrinsic_angular_frequency / np.sqrt(grav * depth)
+    elif limit == 2:
+        return (intrinsic_angular_frequency**2 / kinematic_surface_tension) ** (1 / 3)
+    elif limit == 3:
+        kinematic_surface_tension = 0.0
+
+    # == Initial Estimate ==
+    if intrinsic_angular_frequency > np.sqrt(grav / depth):
+        # use the deep water relation
+        wavenumber_estimate = intrinsic_angular_frequency**2 / grav
+    else:
+        # use the shallow water relation
+        wavenumber_estimate = intrinsic_angular_frequency / np.sqrt(grav * depth)
+
+    # If the initial estimate turns out to be in the capillary range- use the pure capillary dispersion relation for
+    # the initial estimate.
+    if wavenumber_estimate**3 * kinematic_surface_tension / grav > 5:
+        wavenumber_estimate = (
+            intrinsic_angular_frequency**2 / kinematic_surface_tension
+        ) ** (1 / 3)
+
+    # == Newton Iteration ==
+    for ii in range(0, maximum_number_of_iterations):
+        surface_tension_term = np.sqrt(
+            1 + kinematic_surface_tension * wavenumber_estimate**2 / grav
         )
 
-    wavenumber_estimate = np.empty_like(intrinsic_angular_frequency)
-    for jj in range(0, len(intrinsic_angular_frequency)):
-        wavenumber_estimate[jj] = _inverse_intrinsic_dispersion_relation_scalar(
-            intrinsic_angular_frequency[jj],
-            depth[jj],
-            kinematic_surface_tension,
-            grav,
-            maximum_number_of_iterations,
-            relative_tolerance,
-            absolute_tolerance,
-            limit,
+        error = (
+            np.sqrt(grav * wavenumber_estimate * np.tanh(wavenumber_estimate * depth))
+            * surface_tension_term
+            - intrinsic_angular_frequency
+        )
+
+        if (
+            np.abs(error) < absolute_tolerance
+            and np.abs(error / intrinsic_angular_frequency) < relative_tolerance
+        ):
+            break
+
+        kd = wavenumber_estimate * depth
+
+        # Group speed in the absence of surface tension
+        cg = (1 / 2 + kd / np.sinh(2 * kd)) * np.sqrt(
+            grav / wavenumber_estimate * np.tanh(kd)
+        )
+
+        # Calculate the derivative of the error function with respect to wavenumber.
+        error_derivative_to_wavenumber = (
+            cg * surface_tension_term
+            + np.sqrt(grav * wavenumber_estimate * np.tanh(kd))
+            * wavenumber_estimate
+            * kinematic_surface_tension
+            / grav
+            / surface_tension_term
+        )
+
+        # Newton Iteration
+        wavenumber_estimate = (
+            wavenumber_estimate - error / error_derivative_to_wavenumber
         )
 
     return wavenumber_estimate
