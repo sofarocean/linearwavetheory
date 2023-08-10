@@ -6,6 +6,7 @@ _parallel = False
 _error_model = "python"
 _fastmath = False
 _boundscheck = False
+_target = "cpu"
 
 numba_default = {
     "nopython": _nopython,
@@ -16,4 +17,10 @@ numba_default = {
     "error_model": _error_model,
     "fastmath": _fastmath,
     "boundscheck": _boundscheck,
+}
+
+numba_default_vectorize = {
+    "nopython": _nopython,
+    "cache": _cache,
+    "target": _target,
 }

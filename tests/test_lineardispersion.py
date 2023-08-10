@@ -15,7 +15,6 @@ def test_inverse_intrinsic_dispersion_relation():
 
     # calculate the intrinsic frequency from the wavenumber and depth
     intrinsic_frequency = ld.intrinsic_dispersion_relation(wavenumber, depth)
-
     # estimate the wavenumber based on the intrinsic frequency and depth
     solution = ld.inverse_intrinsic_dispersion_relation(intrinsic_frequency, depth)
     solution_freq = ld.intrinsic_dispersion_relation(solution, depth)

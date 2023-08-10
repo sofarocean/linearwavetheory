@@ -58,7 +58,7 @@ Authors: Pieter Bart Smit
 """
 
 import numpy as np
-from numba import jit, vectorize
+from numba import jit, vectorize, float64, float32, int64, int32, guvectorize
 from ._tools import atleast_1d, _to_2d_array
 from ._constants import (
     GRAV,
@@ -67,22 +67,231 @@ from ._constants import (
     RELATIVE_TOLERANCE,
     ABSOLUTE_TOLERANCE,
     DEEPWATER,
+    SHALLOWWATER,
 )
 
-from ._numba_settings import numba_default
+from ._numba_settings import numba_default, numba_default_vectorize
 from typing import Union
+
+
+@jit(**numba_default)
+def intrinsic_dispersion_relation(
+    wavenumber_magnitude: Union[float, np.ndarray],
+    depth: Union[float, np.ndarray] = np.inf,
+    kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
+    grav=GRAV,
+    wave_type: str = "gravity-capillary",
+    wave_regime: str = "intermediate",
+) -> np.ndarray:
+    """
+    The intrinsic dispersion relation for linear gravity-capillary waves in water of constant depth that relates the
+    specific angular frequency to a given wavenumber and depth in a reference frame following mean ambient flow. I.e.
+
+        w = sqrt( ( ( g * k + tau * k**3 ) * tanh(k*d) )
+
+    with g gravitational acceleration, tau kinematic surface tension, k wavenumber and d depth.
+
+    NOTE:
+        - if the wavenumber magnitude is zero, the intrinsic frequency is zero.
+        - if the depth is smaller or equal to zero, the intrinsic frequency is undefined and np.nan is returned.
+        - if the wavenumber magnitude is negative, we return an error (undefined).
+
+    :param  wavenumber_magnitude: The wavenumber_magnitude. Can be a scalar or a 1 dimensional numpy array.
+
+    :param depth: depth in meters. Can be a scalar or a 1 dimensional numpy array. If a 1d array is provided, it must
+        have the same length as the wavenumber_magnitude array, and calculation is performed pairwise. I.e.
+        w[j] is calculated for k[j] and d[j].
+
+    :param kinematic_surface_tension: kinematic surface tension in m^3/s^2. Per default set to 0.0728 N/m (water at 20C)
+        divided by density of seawater (1025 kg/m^3).
+
+    :param grav: gravitational acceleration in m/s^2. Default is 9.81 m/s^2.
+
+    :param wave_type: The type of wave. Can be 'gravity', 'capillary' or 'gravity-capillary'. If 'gravity', we ignore
+    surface tension effects. If capillary, we ignore gravity effects. If 'gravity-capillary', we include both effects.
+    The later is default.
+
+    :param wave_regime: The depth limit to use. Can be 'deep', 'shallow' or 'intermediate'. If 'deep', the deep water limit is
+        used. If 'shallow', the shallow water limit is used. If 'intermediate', the full dispersion relation is used. Default is
+        none.
+
+    :return: The intrinsic angular frequency as a 1 dimensional numpy array.
+    """
+
+    wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
+    if np.any(wavenumber_magnitude < 0.0):
+        raise ValueError("wavenumber_magnitude must be non-negative.")
+
+    kinematic_surface_tension, grav, _wave_regime = _input_parsing(
+        wave_type, wave_regime, grav, kinematic_surface_tension
+    )
+
+    return _intrinsic_dispersion_relation_ufunc(
+        wavenumber_magnitude, depth, kinematic_surface_tension, grav, _wave_regime
+    )
+
+
+@vectorize(
+    [
+        float64(float64, float64, float64, float64, int64),
+        float32(float32, float32, float32, float32, int32),
+        float32(float32, float32, float64, float64, int64),
+    ],
+    **numba_default_vectorize,
+)
+def _intrinsic_dispersion_relation_ufunc(
+    wavenumber_magnitude, depth, kinematic_surface_tension, grav, wave_regime
+):
+    if wavenumber_magnitude == 0.0:
+        return 0.0
+
+    if depth <= 0:
+        return np.nan
+
+    if wave_regime == 1:
+        return np.sqrt(
+            (
+                grav * wavenumber_magnitude
+                + kinematic_surface_tension * wavenumber_magnitude**3
+            )
+        )
+    elif wave_regime == 2:
+        return wavenumber_magnitude * np.sqrt(
+            (depth) * (grav + kinematic_surface_tension * wavenumber_magnitude**2)
+        )
+    else:
+        return np.sqrt(
+            (
+                grav * wavenumber_magnitude
+                + kinematic_surface_tension * wavenumber_magnitude**3
+            )
+            * np.tanh(wavenumber_magnitude * depth)
+        )
+
+
+@jit(**numba_default)
+def intrinsic_group_speed(
+    wavenumber_magnitude: Union[float, np.ndarray],
+    depth: Union[float, np.ndarray] = np.inf,
+    kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
+    grav=GRAV,
+    wave_type: str = "gravity-capillary",
+    wave_regime: str = "intermediate",
+) -> np.ndarray:
+    """
+    The intrinsic group speed for linear gravity-capillary waves. I.e.
+
+        cg = dw / dk
+
+    NOTE:
+        - if the wavenumber magnitude is zero, the group speed is defined as it's limiting value as k-> 0
+            (the shallow water group speed).
+        - if the depth is smaller or equal to zero, the group speed is undefined and np.nan is returned.
+        - if the wavenumber magnitude is negative, we return an error (undefined).
+
+    :param  wavenumber_magnitude: The wavenumber_magnitude. Can be a scalar or a 1 dimensional numpy array.
+
+    :param depth: depth in meters. Can be a scalar or a 1 dimensional numpy array. If a 1d array is provided, it must
+        have the same length as the wavenumber_magnitude array, and calculation is performed pairwise. I.e.
+        w[j] is calculated for k[j] and d[j].
+
+    :param kinematic_surface_tension: kinematic surface tension in m^3/s^2. Per default set to 0.0728 N/m (water at 20C)
+        divided by density of seawater (1025 kg/m^3).
+
+    :param grav: gravitational acceleration in m/s^2. Default is 9.81 m/s^2.
+
+    :return: The intrinsic group speed as a 1 dimensional numpy array.
+    """
+    wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
+    depth = atleast_1d(depth)
+
+    if np.any(wavenumber_magnitude < 0):
+        raise ValueError("Wavenumber magnitude must be positive")
+
+    kinematic_surface_tension, grav, _wave_regime = _input_parsing(
+        wave_type, wave_regime, grav, kinematic_surface_tension
+    )
+
+    return _intrinsic_group_speed_ufunc(
+        wavenumber_magnitude, depth, kinematic_surface_tension, grav, _wave_regime
+    )
+
+
+@vectorize(
+    [
+        float64(float64, float64, float64, float64, int64),
+        float32(float32, float32, float32, float32, int32),
+        float32(float32, float32, float64, float64, int64),
+    ],
+    **numba_default_vectorize,
+)
+def _intrinsic_group_speed_ufunc(
+    wavenumber_magnitude,
+    depth,
+    kinematic_surface_tension,
+    grav,
+    _wave_regime,
+) -> np.ndarray:
+    """
+    The intrinsic group speed for linear gravity-capillary waves. I.e.
+
+        cg = dw / dk
+
+    """
+    if depth <= 0:
+        return np.nan
+
+    if wavenumber_magnitude == 0:
+        return np.sqrt(grav * depth)
+
+    kd = wavenumber_magnitude * depth
+
+    if _wave_regime == 1 or kd > DEEPWATER:
+        # deep water
+        return 0.5 * (
+            (grav + 3 * kinematic_surface_tension * wavenumber_magnitude**2)
+            / np.sqrt(
+                grav * wavenumber_magnitude
+                + kinematic_surface_tension * wavenumber_magnitude**3
+            )
+        )
+    elif _wave_regime == 2 or kd < SHALLOWWATER:
+        # shallow water
+        return (
+            np.sqrt(depth)
+            * (grav + 2 * kinematic_surface_tension * wavenumber_magnitude**2)
+            / np.sqrt(grav + kinematic_surface_tension * wavenumber_magnitude**2)
+        )
+    else:
+        surface_tension_term = np.sqrt(
+            grav + kinematic_surface_tension * wavenumber_magnitude**2
+        )
+        n = 1 / 2 + kd / np.sinh(2 * kd)
+        c = np.sqrt(np.tanh(kd) / wavenumber_magnitude)
+        w = wavenumber_magnitude * c
+
+        _intrinsic_group_speed = (
+            n * c * surface_tension_term
+            + w
+            * wavenumber_magnitude
+            * kinematic_surface_tension
+            / surface_tension_term
+        )
+
+    return _intrinsic_group_speed
 
 
 @jit(**numba_default)
 def inverse_intrinsic_dispersion_relation(
     intrinsic_angular_frequency: Union[float, np.ndarray],
     depth: Union[float, np.ndarray] = np.inf,
-    grav: float = GRAV,
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
-    maximum_number_of_iterations: int = MAXIMUM_NUMBER_OF_ITERATIONS,
+    grav=GRAV,
+    wave_type: str = "gravity-capillary",
+    wave_regime: str = "intermediate",
     relative_tolerance: float = RELATIVE_TOLERANCE,
     absolute_tolerance: float = ABSOLUTE_TOLERANCE,
-    limit="none",
+    maximum_number_of_iterations: int = MAXIMUM_NUMBER_OF_ITERATIONS,
 ) -> np.ndarray:
     """
     Find the wavenumber magnitude for a given intrinsic radial frequency through inversion of the dispersion relation
@@ -130,8 +339,8 @@ def inverse_intrinsic_dispersion_relation(
 
     :param absolute_tolerance: Absolute accuracy used in the stopping criterium. Default is np.inf.
 
-    :param limit: Use a limiting form. Can be: 'deep', 'shallow', 'cappilary', 'gravity' or 'none'.
-        Default is 'none' (use the full relation). `gravity` is the same as calling the function with the
+    :param limit: Use a limiting form. Can be: 'deep', 'shallow', 'cappilary', 'gravity' or 'intermediate'.
+        Default is 'intermediate' (use the full relation). `gravity` is the same as calling the function with the
         kinematic_surface_tension set to zero.
 
     :return: The wavenumber as a 1D numpy array. Note that even if a scalar is provided for the intrinsic angular
@@ -147,10 +356,10 @@ def inverse_intrinsic_dispersion_relation(
     >>> depth = 100
 
     >>> k1 = inverse_intrinsic_dispersion_relation(w, depth)
-    >>> k2 = inverse_intrinsic_dispersion_relation(w, depth,kinematic_surface_tension=0.0)
-    >>> k3 = inverse_intrinsic_dispersion_relation(w, depth,limit='deep')
-    >>> k4 = inverse_intrinsic_dispersion_relation(w, depth,limit='shallow')
-    >>> k5 = inverse_intrinsic_dispersion_relation(w, depth,limit='capillary')
+    >>> k2 = inverse_intrinsic_dispersion_relation(w, depth,wave_type='gravity')
+    >>> k3 = inverse_intrinsic_dispersion_relation(w, depth,wave_regime='deep')
+    >>> k4 = inverse_intrinsic_dispersion_relation(w, depth,wave_regime='shallow')
+    >>> k5 = inverse_intrinsic_dispersion_relation(w, depth,wave_type='capillary')
     >>> plt.plot(f, k1, label='with surface tension')
     >>> plt.plot(f, k2, label='without surface tension')
     >>> plt.plot(f, k3, label='deep water limit')
@@ -170,12 +379,6 @@ def inverse_intrinsic_dispersion_relation(
     intrinsic_angular_frequency = atleast_1d(intrinsic_angular_frequency)
     depth = atleast_1d(depth)
 
-    if kinematic_surface_tension < 0:
-        raise ValueError("kinematic_surface_tension must be non-negative.")
-
-    if grav <= 0:
-        raise ValueError("grav must be positive.")
-
     if maximum_number_of_iterations < 1:
         raise ValueError("maximum_number_of_iterations must be at least 1.")
 
@@ -185,17 +388,11 @@ def inverse_intrinsic_dispersion_relation(
     if absolute_tolerance <= 0:
         raise ValueError("absolute_tolerance must be positive.")
 
-    _limit = 0
     # Passing as a number because numba vectorize does not support strings (it seems? - not well tested other than
     # the naive approach of just passing a string fails.)
-    if limit == "deep":
-        _limit = 1
-    elif limit == "shallow":
-        _limit = 2
-    elif limit == "capillary":
-        _limit = 3
-    elif limit == "gravity":
-        _limit = 4
+    kinematic_surface_tension, grav, _wave_regime = _input_parsing(
+        wave_type, wave_regime, grav, kinematic_surface_tension
+    )
 
     return _inverse_intrinsic_dispersion_relation_ufunc(
         intrinsic_angular_frequency,
@@ -205,11 +402,18 @@ def inverse_intrinsic_dispersion_relation(
         maximum_number_of_iterations,
         relative_tolerance,
         absolute_tolerance,
-        _limit,
+        _wave_regime,
     )
 
 
-@vectorize()
+@vectorize(
+    [
+        float64(float64, float64, float64, float64, int64, float64, float64, int64),
+        float32(float32, float32, float32, float32, int32, float32, float32, int32),
+        float32(float32, float32, float64, float64, int64, float64, float64, int64),
+    ],
+    **numba_default_vectorize,
+)
 def _inverse_intrinsic_dispersion_relation_ufunc(
     intrinsic_angular_frequency,
     depth,
@@ -218,9 +422,8 @@ def _inverse_intrinsic_dispersion_relation_ufunc(
     maximum_number_of_iterations: int,
     relative_tolerance: float,
     absolute_tolerance: float,
-    _limit: int,
+    wave_regime: int,
 ):
-    limit = "none"
     """
     ** Internal function. Call inverse_intrinsic_dispersion_relation instead. **
 
@@ -284,15 +487,6 @@ def _inverse_intrinsic_dispersion_relation_ufunc(
     if intrinsic_angular_frequency == 0:
         return 0.0
 
-    if limit == 0:
-        return intrinsic_angular_frequency**2 / grav
-    elif limit == 1:
-        return intrinsic_angular_frequency / np.sqrt(grav * depth)
-    elif limit == 2:
-        return (intrinsic_angular_frequency**2 / kinematic_surface_tension) ** (1 / 3)
-    elif limit == 3:
-        kinematic_surface_tension = 0.0
-
     # == Initial Estimate ==
     if intrinsic_angular_frequency > np.sqrt(grav / depth):
         # use the deep water relation
@@ -310,276 +504,30 @@ def _inverse_intrinsic_dispersion_relation_ufunc(
 
     # == Newton Iteration ==
     for ii in range(0, maximum_number_of_iterations):
-        surface_tension_term = np.sqrt(
-            1 + kinematic_surface_tension * wavenumber_estimate**2 / grav
-        )
-
         error = (
-            np.sqrt(grav * wavenumber_estimate * np.tanh(wavenumber_estimate * depth))
-            * surface_tension_term
-            - intrinsic_angular_frequency
-        )
-
-        if (
-            np.abs(error) < absolute_tolerance
-            and np.abs(error / intrinsic_angular_frequency) < relative_tolerance
-        ):
-            break
-
-        kd = wavenumber_estimate * depth
-
-        # Group speed in the absence of surface tension
-        cg = (1 / 2 + kd / np.sinh(2 * kd)) * np.sqrt(
-            grav / wavenumber_estimate * np.tanh(kd)
-        )
-
-        # Calculate the derivative of the error function with respect to wavenumber.
-        error_derivative_to_wavenumber = (
-            cg * surface_tension_term
-            + np.sqrt(grav * wavenumber_estimate * np.tanh(kd))
-            * wavenumber_estimate
-            * kinematic_surface_tension
-            / grav
-            / surface_tension_term
-        )
-
-        # Newton Iteration
-        wavenumber_estimate = (
-            wavenumber_estimate - error / error_derivative_to_wavenumber
-        )
-
-    return wavenumber_estimate
-
-
-@jit(**numba_default)
-def _inverse_intrinsic_dispersion_relation_scalar(
-    intrinsic_angular_frequency: float,
-    depth: float = np.inf,
-    kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
-    grav: float = GRAV,
-    maximum_number_of_iterations: int = MAXIMUM_NUMBER_OF_ITERATIONS,
-    relative_tolerance: float = RELATIVE_TOLERANCE,
-    absolute_tolerance: float = ABSOLUTE_TOLERANCE,
-    limit="none",
-) -> float:
-    """
-    ** Internal function. Call inverse_intrinsic_dispersion_relation instead. **
-
-    Find the wavenumber magnitude for a given intrinsic radial frequency through inversion of the dispersion relation
-    for linear gravity waves including suface tension effects, i.e. solve for wavenumber k in:
-
-        w = sqrt( ( ( g * k + tau * k**3 ) * tanh(k*d) )
-
-    with g gravitational acceleration, tau kinematice surface tension, k wavenumber and d depth. The dispersion relation
-    is solved using Newton Iteration with a first guess based on the dispersion relation for deep or shallow water
-    waves.
-
-    Notes:
-    - We only solve for real roots (no evanescent waves)
-    - For negative depths or zero depths we reduce nan (undefined)
-    - For zero frequency we return zero wavenumber
-    - Stopping criterium is based on relative and absolute tolerance:
-
-            | w - w_est | / w < relative_tolerance  (default 1e-3)
-
-            and
-
-            | w - w_est |  < absolute_tolerance  (default np.inf
-
-        where w is the intrinsic angular frequency and w_est is the estimated intrinsic angular frequency based on the
-        current estimate of the wavenumber. Per default we do not use the absolute stopping criterium.
-
-    - We exit when either maximum number of iterations (default 10 is reached, or tolerance is achieved.
-      Typically only 1 to 2 iterations are needed.
-
-    :param  intrinsic_angular_frequency: The radial frequency in rad/s as observed from a frame of reference moving with the
-        wave. Scalar.
-
-    :param depth: depth in meters. Scalar.
-
-    :param kinematic_surface_tension: kinematic surface tension in m^3/s^2. Per default set to 0.0728 N/m (water at 20C)
-        divided by density of seawater (1025 kg/m^3).
-
-    :param grav: gravitational acceleration in m/s^2. Default is 9.81 m/s^2.
-
-    :param maximum_number_of_iterations: Maximum number of iterations. Default is 10.
-
-    :param relative_tolerance: Relative accuracy used in the stopping criterium. Default is 1e-3.
-
-    :param absolute_tolerance: Absolute accuracy used in the stopping criterium. Default is np.inf.
-
-    :return: The wavenumber. Scalar.
-    """
-
-    # == Input Validation ==
-
-    # Since we can try to solve for the negative intrinsic frequency branch of the dispersion relation, we allow
-    # negative intrinsic frequencies. In this case the wavenumber magnitude is the same as for the positive branch.
-    intrinsic_angular_frequency = np.abs(intrinsic_angular_frequency)
-
-    # For zero or negative depths the solution is undefined.
-    if depth <= 0:
-        return np.nan
-
-    # For zero intrinsic frequency the wavenumber is zero
-    if intrinsic_angular_frequency == 0:
-        return 0.0
-
-    if kinematic_surface_tension < 0:
-        raise ValueError("kinematic_surface_tension must be non-negative.")
-
-    if grav <= 0:
-        raise ValueError("grav must be positive.")
-
-    if maximum_number_of_iterations < 1:
-        raise ValueError("maximum_number_of_iterations must be at least 1.")
-
-    if relative_tolerance <= 0:
-        raise ValueError("relative_tolerance must be positive.")
-
-    if absolute_tolerance <= 0:
-        raise ValueError("absolute_tolerance must be positive.")
-
-    if limit == "deep":
-        return intrinsic_angular_frequency**2 / grav
-    elif limit == "shallow":
-        return intrinsic_angular_frequency / np.sqrt(grav * depth)
-    elif limit == "capillary":
-        return (intrinsic_angular_frequency**2 / kinematic_surface_tension) ** (1 / 3)
-    elif limit == "gravity":
-        kinematic_surface_tension = 0.0
-
-    # == Initial Estimate ==
-    if intrinsic_angular_frequency > np.sqrt(grav / depth):
-        # use the deep water relation
-        wavenumber_estimate = intrinsic_angular_frequency**2 / grav
-    else:
-        # use the shallow water relation
-        wavenumber_estimate = intrinsic_angular_frequency / np.sqrt(grav * depth)
-
-    # If the initial estimate turns out to be in the capillary range- use the pure capillary dispersion relation for
-    # the initial estimate.
-    if wavenumber_estimate**3 * kinematic_surface_tension / grav > 5:
-        wavenumber_estimate = (
-            intrinsic_angular_frequency**2 / kinematic_surface_tension
-        ) ** (1 / 3)
-
-    # == Newton Iteration ==
-    for ii in range(0, maximum_number_of_iterations):
-        surface_tension_term = np.sqrt(
-            1 + kinematic_surface_tension * wavenumber_estimate**2 / grav
-        )
-
-        error = (
-            np.sqrt(grav * wavenumber_estimate * np.tanh(wavenumber_estimate * depth))
-            * surface_tension_term
-            - intrinsic_angular_frequency
-        )
-
-        if (
-            np.abs(error) < absolute_tolerance
-            and np.abs(error / intrinsic_angular_frequency) < relative_tolerance
-        ):
-            break
-
-        kd = wavenumber_estimate * depth
-
-        if kd > DEEPWATER:
-            cg = 0.5 * np.sqrt(grav / wavenumber_estimate)
-        else:
-            # Group speed in the absence of surface tension
-            cg = (1 / 2 + kd / np.sinh(2 * kd)) * np.sqrt(
-                grav / wavenumber_estimate * np.tanh(kd)
+            _intrinsic_dispersion_relation_ufunc(
+                wavenumber_estimate, depth, kinematic_surface_tension, grav, wave_regime
             )
+            - intrinsic_angular_frequency
+        )
+
+        if (
+            np.abs(error) < absolute_tolerance
+            and np.abs(error / intrinsic_angular_frequency) < relative_tolerance
+        ):
+            break
 
         # Calculate the derivative of the error function with respect to wavenumber.
-        error_derivative_to_wavenumber = (
-            cg * surface_tension_term
-            + np.sqrt(grav * wavenumber_estimate * np.tanh(kd))
-            * wavenumber_estimate
-            * kinematic_surface_tension
-            / grav
-            / surface_tension_term
+        error_derivative_to_wavenumber = _intrinsic_group_speed_ufunc(
+            wavenumber_estimate, depth, kinematic_surface_tension, grav, wave_regime
         )
 
         # Newton Iteration
         wavenumber_estimate = (
             wavenumber_estimate - error / error_derivative_to_wavenumber
         )
-    else:
-        print(
-            "inverse_intrinsic_dispersion_relation:: No convergence in solving for wavenumber"
-        )
 
     return wavenumber_estimate
-
-
-@jit(**numba_default)
-def intrinsic_dispersion_relation(
-    wavenumber_magnitude: Union[float, np.ndarray],
-    depth: Union[float, np.ndarray] = np.inf,
-    kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
-    grav=GRAV,
-) -> np.ndarray:
-    """
-    The intrinsic dispersion relation for linear gravity-capillary waves in water of constant depth that relates the
-    specific angular frequency to a given wavenumber and depth in a reference frame following mean ambient flow. I.e.
-
-        w = sqrt( ( ( g * k + tau * k**3 ) * tanh(k*d) )
-
-    with g gravitational acceleration, tau kinematic surface tension, k wavenumber and d depth.
-
-    NOTE:
-        - if the wavenumber magnitude is zero, the intrinsic frequency is zero.
-        - if the depth is smaller or equal to zero, the intrinsic frequency is undefined and np.nan is returned.
-        - if the wavenumber magnitude is negative, we return an error (undefined).
-
-    :param  wavenumber_magnitude: The wavenumber_magnitude. Can be a scalar or a 1 dimensional numpy array.
-
-    :param depth: depth in meters. Can be a scalar or a 1 dimensional numpy array. If a 1d array is provided, it must
-        have the same length as the wavenumber_magnitude array, and calculation is performed pairwise. I.e.
-        w[j] is calculated for k[j] and d[j].
-
-    :param kinematic_surface_tension: kinematic surface tension in m^3/s^2. Per default set to 0.0728 N/m (water at 20C)
-        divided by density of seawater (1025 kg/m^3).
-
-    :param grav: gravitational acceleration in m/s^2. Default is 9.81 m/s^2.
-
-    :return: The intrinsic angular frequency as a 1 dimensional numpy array.
-    """
-
-    if kinematic_surface_tension < 0:
-        raise ValueError("kinematic_surface_tension must be non-negative.")
-
-    if grav < 0:
-        raise ValueError("grav must be positive.")
-
-    wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
-    if np.any(wavenumber_magnitude < 0.0):
-        raise ValueError("wavenumber_magnitude must be non-negative.")
-
-    return _intrinsic_dispersion_relation_ufunc(
-        wavenumber_magnitude, depth, kinematic_surface_tension, grav
-    )
-
-
-@vectorize()
-def _intrinsic_dispersion_relation_ufunc(
-    wavenumber_magnitude, depth, kinematic_surface_tension, grav
-):
-    if wavenumber_magnitude == 0.0:
-        return 0.0
-
-    if depth <= 0:
-        return np.nan
-
-    return np.sqrt(
-        (
-            grav * wavenumber_magnitude
-            + kinematic_surface_tension * wavenumber_magnitude**3
-        )
-        * np.tanh(wavenumber_magnitude * depth)
-    )
 
 
 @jit(**numba_default)
@@ -590,6 +538,8 @@ def encounter_dispersion_relation(
     observer_velocity=(0, 0),
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
     grav=GRAV,
+    wave_type: str = "gravity-capillary",
+    wave_regime: str = "intermediate",
 ) -> np.ndarray:
     """
     The dispersion relation for linear waves in water of constant depth with a constant ambient current that relates the
@@ -649,6 +599,8 @@ def encounter_dispersion_relation(
         depth,
         kinematic_surface_tension=kinematic_surface_tension,
         grav=grav,
+        wave_type=wave_type,
+        wave_regime=wave_regime,
     )
 
     return intrinsic_angular_frequency + doppler_shift
@@ -660,8 +612,9 @@ def intrinsic_phase_speed(
     depth=np.inf,
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
     grav=GRAV,
+    wave_type: str = "gravity-capillary",
+    wave_regime: str = "intermediate",
 ) -> np.ndarray:
-
     """
     The intrinsic phase speed for linear gravity-capillary waves. I.e.
 
@@ -691,23 +644,28 @@ def intrinsic_phase_speed(
     wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
     depth = atleast_1d(depth)
 
-    if grav <= 0:
-        raise ValueError("Gravitational acceleration must be positive")
-
-    if kinematic_surface_tension <= 0:
-        raise ValueError("Kinematic surface tension must be positive")
-
     if np.any(wavenumber_magnitude < 0):
         raise ValueError("Wavenumber magnitude must be positive")
 
+    kinematic_surface_tension, grav, _wave_regime = _input_parsing(
+        wave_type, wave_regime, grav, kinematic_surface_tension
+    )
+
     return _intrinsic_phase_speed_ufunc(
-        wavenumber_magnitude, depth, kinematic_surface_tension, grav
+        wavenumber_magnitude, depth, kinematic_surface_tension, grav, _wave_regime
     )
 
 
-@vectorize()
+@vectorize(
+    [
+        float64(float64, float64, float64, float64, int64),
+        float32(float32, float32, float32, float32, int32),
+        float32(float32, float32, float32, float32, int64),
+    ],
+    **numba_default_vectorize,
+)
 def _intrinsic_phase_speed_ufunc(
-    wavenumber_magnitude, depth, kinematic_surface_tension, grav
+    wavenumber_magnitude, depth, kinematic_surface_tension, grav, _wave_regime
 ):
     if depth <= 0:
         return np.nan
@@ -715,10 +673,25 @@ def _intrinsic_phase_speed_ufunc(
     if wavenumber_magnitude == 0:
         return np.sqrt(grav * depth)
 
-    return np.sqrt(
-        (grav / wavenumber_magnitude + kinematic_surface_tension * wavenumber_magnitude)
-        * np.tanh(wavenumber_magnitude * depth)
-    )
+    if _wave_regime == 1:
+        return np.sqrt(
+            grav / wavenumber_magnitude
+            + kinematic_surface_tension * wavenumber_magnitude
+        )
+
+    elif _wave_regime == 2:
+        return np.sqrt(depth) * np.sqrt(
+            grav + kinematic_surface_tension * wavenumber_magnitude**2
+        )
+
+    else:
+        return np.sqrt(
+            (
+                grav / wavenumber_magnitude
+                + kinematic_surface_tension * wavenumber_magnitude
+            )
+            * np.tanh(wavenumber_magnitude * depth)
+        )
 
 
 @jit(**numba_default)
@@ -729,6 +702,8 @@ def encounter_phase_velocity(
     observer_velocity=(0.0, 0.0),
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
     grav=GRAV,
+    wave_type: str = "gravity-capillary",
+    wave_regime: str = "intermediate",
 ) -> np.ndarray:
     """
     The phase VELOCITY of a wave moving through an ambient current field with velocity ambient_current_velocity
@@ -779,6 +754,8 @@ def encounter_phase_velocity(
         depth,
         kinematic_surface_tension=kinematic_surface_tension,
         grav=grav,
+        wave_type=wave_type,
+        wave_regime=wave_regime,
     )
 
     _encounter_phase_velocity = np.zeros(intrinsic_wavenumber_vector.shape)
@@ -809,6 +786,8 @@ def encounter_phase_speed(
     observer_velocity=(0.0, 0.0),
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
     grav=GRAV,
+    wave_type: str = "gravity-capillary",
+    wave_regime: str = "intermediate",
 ) -> np.ndarray:
     """
     The phase SPEED of a wave moving through an ambient current field with velocity ambient_current_velocity
@@ -851,101 +830,12 @@ def encounter_phase_speed(
         observer_velocity=observer_velocity,
         kinematic_surface_tension=kinematic_surface_tension,
         grav=grav,
+        wave_type=wave_type,
+        wave_regime=wave_regime,
     )
     return np.sqrt(
         np.sum(_encounter_phase_velocity * _encounter_phase_velocity, axis=-1)
     )
-
-
-@jit(**numba_default)
-def intrinsic_group_speed(
-    wavenumber_magnitude: Union[float, np.ndarray],
-    depth: Union[float, np.ndarray] = np.inf,
-    kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
-    grav=GRAV,
-) -> np.ndarray:
-    """
-    The intrinsic group speed for linear gravity-capillary waves. I.e.
-
-        cg = dw / dk
-
-    NOTE:
-        - if the wavenumber magnitude is zero, the group speed is defined as it's limiting value as k-> 0
-            (the shallow water group speed).
-        - if the depth is smaller or equal to zero, the group speed is undefined and np.nan is returned.
-        - if the wavenumber magnitude is negative, we return an error (undefined).
-
-    :param  wavenumber_magnitude: The wavenumber_magnitude. Can be a scalar or a 1 dimensional numpy array.
-
-    :param depth: depth in meters. Can be a scalar or a 1 dimensional numpy array. If a 1d array is provided, it must
-        have the same length as the wavenumber_magnitude array, and calculation is performed pairwise. I.e.
-        w[j] is calculated for k[j] and d[j].
-
-    :param kinematic_surface_tension: kinematic surface tension in m^3/s^2. Per default set to 0.0728 N/m (water at 20C)
-        divided by density of seawater (1025 kg/m^3).
-
-    :param grav: gravitational acceleration in m/s^2. Default is 9.81 m/s^2.
-
-    :return: The intrinsic group speed as a 1 dimensional numpy array.
-    """
-    wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
-    depth = atleast_1d(depth)
-
-    if grav <= 0:
-        raise ValueError("Gravitational acceleration must be positive")
-
-    if kinematic_surface_tension <= 0:
-        raise ValueError("Kinematic surface tension must be positive")
-
-    if np.any(wavenumber_magnitude < 0):
-        raise ValueError("Wavenumber magnitude must be positive")
-
-    return _intrinsic_group_speed_ufunc(
-        wavenumber_magnitude, depth, kinematic_surface_tension, grav
-    )
-
-
-@vectorize()
-def _intrinsic_group_speed_ufunc(
-    wavenumber_magnitude,
-    depth,
-    kinematic_surface_tension,
-    grav,
-) -> np.ndarray:
-    """
-    The intrinsic group speed for linear gravity-capillary waves. I.e.
-
-        cg = dw / dk
-
-    """
-    if depth <= 0:
-        return np.nan
-
-    if wavenumber_magnitude == 0:
-        return np.sqrt(grav * depth)
-
-    surface_tension_term = np.sqrt(
-        1 + kinematic_surface_tension * wavenumber_magnitude**2 / grav
-    )
-    kd = wavenumber_magnitude * depth
-    # We need this as for np.inf the division is not defined.
-    if kd > DEEPWATER:
-        n = 0.5
-        c = np.sqrt(grav / wavenumber_magnitude)
-    else:
-        n = 1 / 2 + kd / np.sinh(2 * kd)
-        c = np.sqrt(grav / wavenumber_magnitude * np.tanh(kd))
-    w = wavenumber_magnitude * c
-
-    _intrinsic_group_speed = (
-        n * c * surface_tension_term
-        + w
-        * wavenumber_magnitude
-        * kinematic_surface_tension
-        / grav
-        / surface_tension_term
-    )
-    return _intrinsic_group_speed
 
 
 @jit(**numba_default)
@@ -956,6 +846,8 @@ def encounter_group_velocity(
     observer_velocity=(0.0, 0.0),
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
     grav=GRAV,
+    wave_type: str = "gravity-capillary",
+    wave_regime: str = "intermediate",
 ) -> np.ndarray:
     """
     The group VELOCITY of a wave moving through an ambient current field with velocity ambient_current_velocity
@@ -1006,10 +898,13 @@ def encounter_group_velocity(
         depth,
         kinematic_surface_tension=kinematic_surface_tension,
         grav=grav,
+        wave_type=wave_type,
+        wave_regime=wave_regime,
     )
 
     _encounter_group_velocity = np.zeros(intrinsic_wavenumber_vector.shape)
     for jj in range(0, len(wavenumber_magnitude)):
+
         if wavenumber_magnitude[jj] > 0:
             _encounter_group_velocity[jj, 0] = (
                 _intrinsic_group_speed[jj]
@@ -1039,6 +934,8 @@ def encounter_group_speed(
     relative_velocity=(0.0, 0.0),
     kinematic_surface_tension: float = KINEMATIC_SURFACE_TENSION,
     grav=GRAV,
+    wave_type: str = "gravity-capillary",
+    wave_regime: str = "intermediate",
 ) -> np.ndarray:
     """
     The group SPEED of a wave moving through an ambient current field with velocity ambient_current_velocity
@@ -1081,7 +978,82 @@ def encounter_group_speed(
         relative_velocity,
         kinematic_surface_tension=kinematic_surface_tension,
         grav=grav,
+        wave_type=wave_type,
+        wave_regime=wave_regime,
     )
     return np.sqrt(
         np.sum(_encounter_group_velocity * _encounter_group_velocity, axis=-1)
     )
+
+
+@jit(**numba_default)
+def _input_parsing(
+    wave_type: str, wave_regime: str, grav: float, kinematic_surface_tension: float
+):
+    """
+    Test input parameters for consistency. We also need to convert the wave type and depth limit to integers (or
+        enums) for use in the numba vectorize functions, as the vectorize decorator does not support strings (it
+        appears).
+
+    :param wave_type: one of 'gravity', 'capillary' or 'gravity-capillary'
+    :param wave_regime: one of 'deep', 'shallow' or 'intermediate'
+    :param grav: gravitational acceleration (m/s^2)
+    :param kinematic_surface_tension: kinematic surface tension (m^3/s^2)
+
+    :return: parsed parameters
+    """
+
+    if kinematic_surface_tension < 0:
+        raise ValueError("kinematic_surface_tension must be non-negative.")
+
+    if grav <= 0:
+        raise ValueError("grav must be positive.")
+
+    if wave_type == "gravity":
+        kinematic_surface_tension = 0.0
+    elif wave_type == "capillary":
+        grav = 0.0
+    elif wave_type == "gravity-capillary":
+        pass
+    else:
+        raise ValueError(
+            "wave_type must be 'gravity', 'capillary' or 'gravity-capillary'."
+        )
+
+    if wave_regime == "deep":
+        _wave_regime = 1
+    elif wave_regime == "shallow":
+        _wave_regime = 2
+    elif wave_regime == "intermediate":
+        _wave_regime = 0
+    else:
+        raise ValueError("wave_regime must be 'deep', 'shallow' or 'intermediate'.")
+
+    return kinematic_surface_tension, grav, _wave_regime
+
+
+# unfortunately the function below compiles and works when called from outside an njitted context, but fails when
+# called from within an njitted context. This is a bug in numba, there is no workaround as far as I know. The function
+# is provided for future reference, but is not used.
+@guvectorize(
+    [
+        (float64, float64, float64[:], float64[:], float64[:]),
+        (float32, float32, float32[:], float32[:], float32[:]),
+    ],
+    "(),(),(n),(n)->(n)",
+)
+def _set_velocity_components(
+    speed, wavenumber_magnitude, wavenumber_vector, ambient_current_vector, result
+):
+    if wavenumber_magnitude < 0:
+        result[0] = np.nan
+        result[1] = np.nan
+    else:
+        result[0] = (
+            speed * wavenumber_vector[0] / wavenumber_magnitude
+            + ambient_current_vector[0]
+        )
+        result[1] = (
+            speed * wavenumber_vector[1] / wavenumber_magnitude
+            + ambient_current_vector[1]
+        )
