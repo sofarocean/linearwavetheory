@@ -58,7 +58,7 @@ Authors: Pieter Bart Smit
 import numpy as np
 from numba import jit
 from .settings import PhysicsOptions, NumericalOptions, parse_options
-from ._tools import atleast_1d, _to_2d_array
+from ._tools import atleast_1d, _to_2d_array, atleast_2d
 from ._dispersion_ufuncs import (
     _intrinsic_phase_speed_shallow,
     _intrinsic_phase_speed_intermediate,
@@ -441,37 +441,28 @@ def encounter_phase_velocity(
 
     :return: A 2D numpy array with shape (N,2) where N is the number of wavenumbers.
     """
-
-    intrinsic_wavenumber_vector = _to_2d_array(intrinsic_wavenumber_vector)
-    ambient_current_velocity = _to_2d_array(
-        ambient_current_velocity, target_rows=intrinsic_wavenumber_vector.shape[0]
+    intrinsic_wavenumber_vector, ambient_current_velocity = _vector_preprocessing(
+        intrinsic_wavenumber_vector, ambient_current_velocity
     )
+
     wavenumber_magnitude = np.sqrt(
         np.sum(intrinsic_wavenumber_vector * intrinsic_wavenumber_vector, axis=-1)
     )
 
+    wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
+
     _intrinsic_phase_speed = intrinsic_phase_speed(
         wavenumber_magnitude, depth, physics_options
     )
+    _intrinsic_phase_speed = np.expand_dims(_intrinsic_phase_speed, axis=-1)
+    wavenumber_magnitude = np.expand_dims(wavenumber_magnitude, axis=-1)
 
-    _encounter_phase_velocity = np.zeros(intrinsic_wavenumber_vector.shape)
-    for jj in range(0, len(wavenumber_magnitude)):
-        if wavenumber_magnitude[jj] > 0:
-            _encounter_phase_velocity[jj, 0] = (
-                _intrinsic_phase_speed[jj]
-                * intrinsic_wavenumber_vector[jj, 0]
-                / wavenumber_magnitude[jj]
-                + ambient_current_velocity[jj, 0]
-            )
-
-            _encounter_phase_velocity[jj, 1] = (
-                _intrinsic_phase_speed[jj]
-                * intrinsic_wavenumber_vector[jj, 1]
-                / wavenumber_magnitude[jj]
-                + ambient_current_velocity[jj, 1]
-            )
-
-    return _encounter_phase_velocity
+    direction = np.where(
+        wavenumber_magnitude > 0,
+        intrinsic_wavenumber_vector / wavenumber_magnitude,
+        np.nan,
+    )
+    return direction * _intrinsic_phase_speed + ambient_current_velocity
 
 
 @jit(**numba_default)
@@ -558,40 +549,31 @@ def encounter_group_velocity(
 
     :return: A 2D numpy array with shape (N,2) where N is the number of wavenumbers.
     """
-
-    intrinsic_wavenumber_vector = _to_2d_array(intrinsic_wavenumber_vector)
-    ambient_current_velocity = _to_2d_array(
-        ambient_current_velocity, target_rows=intrinsic_wavenumber_vector.shape[0]
+    intrinsic_wavenumber_vector, ambient_current_velocity = _vector_preprocessing(
+        intrinsic_wavenumber_vector, ambient_current_velocity
     )
+
+    # Norm does not support axis argument in Numba
     wavenumber_magnitude = np.sqrt(
         np.sum(intrinsic_wavenumber_vector * intrinsic_wavenumber_vector, axis=-1)
     )
+
+    # Must be 1D for the expand_dims to work below
+    wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
+
     _intrinsic_group_speed = intrinsic_group_speed(
         wavenumber_magnitude, depth, physics_options
     )
 
-    _encounter_group_velocity = np.zeros(intrinsic_wavenumber_vector.shape)
-    for jj in range(0, len(wavenumber_magnitude)):
+    _intrinsic_group_speed = np.expand_dims(_intrinsic_group_speed, axis=-1)
+    wavenumber_magnitude = np.expand_dims(wavenumber_magnitude, axis=-1)
 
-        if wavenumber_magnitude[jj] > 0:
-            _encounter_group_velocity[jj, 0] = (
-                _intrinsic_group_speed[jj]
-                * intrinsic_wavenumber_vector[jj, 0]
-                / wavenumber_magnitude[jj]
-                + ambient_current_velocity[jj, 0]
-            )
-
-            _encounter_group_velocity[jj, 1] = (
-                _intrinsic_group_speed[jj]
-                * intrinsic_wavenumber_vector[jj, 1]
-                / wavenumber_magnitude[jj]
-                + ambient_current_velocity[jj, 1]
-            )
-        else:
-            # group velocity is undefined for zero wavenumber.
-            _encounter_group_velocity[jj, 0] = np.nan
-            _encounter_group_velocity[jj, 1] = np.nan
-    return _encounter_group_velocity
+    direction = np.where(
+        wavenumber_magnitude > 0,
+        intrinsic_wavenumber_vector / wavenumber_magnitude,
+        np.nan,
+    )
+    return direction * _intrinsic_group_speed + ambient_current_velocity
 
 
 @jit(**numba_default)
@@ -634,3 +616,24 @@ def encounter_group_speed(
     return np.sqrt(
         np.sum(_encounter_group_velocity * _encounter_group_velocity, axis=-1)
     )
+
+
+@jit(**numba_default)
+def _vector_preprocessing(intrinsic_wavenumber_vector, ambient_current_velocity):
+    # convert to numpy arrays. Intrinsic_wavenumber_vector needs to have at least 2 dimensions, as
+    # we specifically define output to be at least 1D
+
+    intrinsic_wavenumber_vector = atleast_1d(intrinsic_wavenumber_vector)
+    ambient_current_velocity = atleast_1d(ambient_current_velocity)
+
+    if not (intrinsic_wavenumber_vector.shape[-1] == 2):
+        raise ValueError(
+            "intrinsic_wavenumber_vector must be a 2D array with shape (...,2)"
+        )
+
+    if not (ambient_current_velocity.shape[-1] == 2):
+        raise ValueError(
+            "ambient_current_velocity must be a 2D array with shape (...,2)"
+        )
+
+    return intrinsic_wavenumber_vector, ambient_current_velocity
