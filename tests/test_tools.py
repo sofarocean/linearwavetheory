@@ -1,4 +1,8 @@
-from src.linearwavetheory._tools import atleast_1d, atleast_2d, _to_2d_array
+from src.linearwavetheory._array_shape_preprocessing import (
+    atleast_1d,
+    atleast_2d,
+    _to_2d_array,
+)
 from src.linearwavetheory._numba_settings import numba_default
 from numba import jit
 import numpy as np

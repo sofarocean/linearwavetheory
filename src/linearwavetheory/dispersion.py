@@ -58,7 +58,7 @@ Authors: Pieter Bart Smit
 import numpy as np
 from numba import jit
 from .settings import PhysicsOptions, NumericalOptions, parse_options
-from ._tools import atleast_1d, _to_2d_array, atleast_2d
+from ._array_shape_preprocessing import atleast_1d, _vector_preprocessing
 from ._dispersion_ufuncs import (
     _intrinsic_phase_speed_shallow,
     _intrinsic_phase_speed_intermediate,
@@ -72,6 +72,7 @@ from ._dispersion_ufuncs import (
     _inverse_intrinsic_dispersion_relation_shallow,
     _inverse_intrinsic_dispersion_relation_intermediate,
     _inverse_intrinsic_dispersion_relation_deep,
+    _blocking_wavenumber_intermediate,
 )
 
 from ._numba_settings import numba_default
@@ -329,9 +330,8 @@ def encounter_dispersion_relation(
     :return: Encounter angular frequency (rad/s) as a 1D numpy array.
     """
 
-    intrinsic_wavenumber_vector = _to_2d_array(intrinsic_wavenumber_vector)
-    ambient_current_velocity = _to_2d_array(
-        ambient_current_velocity, target_rows=intrinsic_wavenumber_vector.shape[0]
+    intrinsic_wavenumber_vector, ambient_current_velocity = _vector_preprocessing(
+        intrinsic_wavenumber_vector, ambient_current_velocity
     )
 
     wavenumber_magnitude = np.sqrt(
@@ -616,24 +616,3 @@ def encounter_group_speed(
     return np.sqrt(
         np.sum(_encounter_group_velocity * _encounter_group_velocity, axis=-1)
     )
-
-
-@jit(**numba_default)
-def _vector_preprocessing(intrinsic_wavenumber_vector, ambient_current_velocity):
-    # convert to numpy arrays. Intrinsic_wavenumber_vector needs to have at least 2 dimensions, as
-    # we specifically define output to be at least 1D
-
-    intrinsic_wavenumber_vector = atleast_1d(intrinsic_wavenumber_vector)
-    ambient_current_velocity = atleast_1d(ambient_current_velocity)
-
-    if not (intrinsic_wavenumber_vector.shape[-1] == 2):
-        raise ValueError(
-            "intrinsic_wavenumber_vector must be a 2D array with shape (...,2)"
-        )
-
-    if not (ambient_current_velocity.shape[-1] == 2):
-        raise ValueError(
-            "ambient_current_velocity must be a 2D array with shape (...,2)"
-        )
-
-    return intrinsic_wavenumber_vector, ambient_current_velocity

@@ -72,3 +72,24 @@ def _to_2d_array(x, target_rows=0):
         raise ValueError("x has an invalid shape")
 
     return out
+
+
+@jit(**numba_default)
+def _vector_preprocessing(intrinsic_wavenumber_vector, ambient_current_velocity):
+    # convert to numpy arrays. Intrinsic_wavenumber_vector needs to have at least 2 dimensions, as
+    # we specifically define output to be at least 1D
+
+    intrinsic_wavenumber_vector = atleast_1d(intrinsic_wavenumber_vector)
+    ambient_current_velocity = atleast_1d(ambient_current_velocity)
+
+    if not (intrinsic_wavenumber_vector.shape[-1] == 2):
+        raise ValueError(
+            "intrinsic_wavenumber_vector must be a 2D array with shape (...,2)"
+        )
+
+    if not (ambient_current_velocity.shape[-1] == 2):
+        raise ValueError(
+            "ambient_current_velocity must be a 2D array with shape (...,2)"
+        )
+
+    return intrinsic_wavenumber_vector, ambient_current_velocity
