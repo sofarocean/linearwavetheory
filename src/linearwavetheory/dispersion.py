@@ -72,7 +72,6 @@ from ._dispersion_ufuncs import (
     _inverse_intrinsic_dispersion_relation_shallow,
     _inverse_intrinsic_dispersion_relation_intermediate,
     _inverse_intrinsic_dispersion_relation_deep,
-    _blocking_wavenumber_intermediate,
 )
 
 from ._numba_settings import numba_default
