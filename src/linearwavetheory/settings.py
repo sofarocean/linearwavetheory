@@ -2,14 +2,17 @@ from numba import float64, int64, jit
 from ._numba_settings import numba_default
 from numba.core.types import unicode_type
 from numba.experimental import jitclass
+import numpy as np
 
-from ._constants import (
-    GRAV,
-    KINEMATIC_SURFACE_TENSION,
-    RELATIVE_TOLERANCE,
-    MAXIMUM_NUMBER_OF_ITERATIONS,
-    ABSOLUTE_TOLERANCE,
-)
+GRAV = 9.80665
+SURFACE_TENSION = 0.074
+WATER_DENSITY = 1025
+KINEMATIC_SURFACE_TENSION = SURFACE_TENSION / WATER_DENSITY
+
+# Default Numerical Parameters
+RELATIVE_TOLERANCE = 1e-3
+MAXIMUM_NUMBER_OF_ITERATIONS = 10
+ABSOLUTE_TOLERANCE = np.inf
 
 
 @jitclass(

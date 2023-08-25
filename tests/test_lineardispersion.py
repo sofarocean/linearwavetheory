@@ -1,7 +1,7 @@
 import src.linearwavetheory.dispersion as ld
 import numpy as np
 from numpy.testing import assert_allclose
-from src.linearwavetheory import _constants
+from src.linearwavetheory import settings
 
 
 def test_inverse_intrinsic_dispersion_relation():
@@ -22,7 +22,7 @@ def test_inverse_intrinsic_dispersion_relation():
 
     # check if the solution is similar to the initial wavenumber within the given tolerance
     assert_allclose(
-        intrinsic_frequency, solution_freq, atol=0, rtol=_constants.RELATIVE_TOLERANCE
+        intrinsic_frequency, solution_freq, atol=0, rtol=settings.RELATIVE_TOLERANCE
     )
 
     # For scalar depth
@@ -32,7 +32,7 @@ def test_inverse_intrinsic_dispersion_relation():
     solution = ld.inverse_intrinsic_dispersion_relation(intrinsic_frequency, 10)
     solution_freq = ld.intrinsic_dispersion_relation(solution, 10)
     assert_allclose(
-        intrinsic_frequency, solution_freq, atol=0, rtol=_constants.RELATIVE_TOLERANCE
+        intrinsic_frequency, solution_freq, atol=0, rtol=settings.RELATIVE_TOLERANCE
     )
 
     # errors for wrong depth
@@ -49,7 +49,7 @@ def test_inverse_intrinsic_dispersion_relation():
     solution = ld.inverse_intrinsic_dispersion_relation(intrinsic_frequency, 10)
     solution_freq = ld.intrinsic_dispersion_relation(solution, 10)
     assert_allclose(
-        solution_freq, intrinsic_frequency, atol=0, rtol=_constants.RELATIVE_TOLERANCE
+        solution_freq, intrinsic_frequency, atol=0, rtol=settings.RELATIVE_TOLERANCE
     )
 
     # For negative depth we get a nan
@@ -71,27 +71,27 @@ def test_intrinsic_dispersion_relation():
     k = np.linspace(0, 0.01, 100)
     depth = np.full(100, 1.0)
 
-    shallow_water_omega = k * np.sqrt(_constants.GRAV * depth)
+    shallow_water_omega = k * np.sqrt(settings.GRAV * depth)
     omega = ld.intrinsic_dispersion_relation(k, depth)
 
     assert_allclose(
-        omega, shallow_water_omega, atol=0, rtol=_constants.RELATIVE_TOLERANCE
+        omega, shallow_water_omega, atol=0, rtol=settings.RELATIVE_TOLERANCE
     )
 
     # Deep water
     k = np.linspace(0.1, 1, 100)
     depth = np.full(100, 1000.0)
-    deep_water_omega = np.sqrt(_constants.GRAV * k)
+    deep_water_omega = np.sqrt(settings.GRAV * k)
     omega = ld.intrinsic_dispersion_relation(k, depth)
-    assert_allclose(omega, deep_water_omega, atol=0, rtol=_constants.RELATIVE_TOLERANCE)
+    assert_allclose(omega, deep_water_omega, atol=0, rtol=settings.RELATIVE_TOLERANCE)
 
     # Capillary waves
     k = np.linspace(10000, 100000, 10)
     depth = np.full(10, 1000.0)
-    capillary_omega = np.sqrt(_constants.KINEMATIC_SURFACE_TENSION * k**3)
+    capillary_omega = np.sqrt(settings.KINEMATIC_SURFACE_TENSION * k**3)
     omega = ld.intrinsic_dispersion_relation(k, depth)
     assert_allclose(
-        omega, capillary_omega, atol=np.inf, rtol=_constants.RELATIVE_TOLERANCE
+        omega, capillary_omega, atol=np.inf, rtol=settings.RELATIVE_TOLERANCE
     )
 
     # Test input verification
@@ -125,7 +125,7 @@ def test_encounter_dispersion_relation():
         ld.encounter_dispersion_relation(kvec, d),
         ld.intrinsic_dispersion_relation(k, d),
         atol=0,
-        rtol=_constants.RELATIVE_TOLERANCE,
+        rtol=settings.RELATIVE_TOLERANCE,
     )
 
     # flow perpendicular to wave vector, should be the same as intrinsic
@@ -137,7 +137,7 @@ def test_encounter_dispersion_relation():
         ld.encounter_dispersion_relation(kvec, d, u),
         ld.intrinsic_dispersion_relation(k, d),
         atol=0,
-        rtol=_constants.RELATIVE_TOLERANCE,
+        rtol=settings.RELATIVE_TOLERANCE,
     )
 
     # flow parallel to wave vector, should be the same as intrinsic + doppler
@@ -149,7 +149,7 @@ def test_encounter_dispersion_relation():
         ld.encounter_dispersion_relation(kvec, d, u),
         ld.intrinsic_dispersion_relation(k, d) + kvec[0] * u[0],
         atol=0,
-        rtol=_constants.RELATIVE_TOLERANCE,
+        rtol=settings.RELATIVE_TOLERANCE,
     )
 
     # Check if broadcasting works
@@ -161,7 +161,7 @@ def test_encounter_dispersion_relation():
         ld.encounter_dispersion_relation(kvec, d, u),
         ld.intrinsic_dispersion_relation(k, d) + kvec[0, 0] * u[0],
         atol=0,
-        rtol=_constants.RELATIVE_TOLERANCE,
+        rtol=settings.RELATIVE_TOLERANCE,
     )
 
     # for a negative current we can get negative frequencies
@@ -181,24 +181,24 @@ def test_intrinsic_phase_speed():
     k = np.linspace(0, 0.01, 100)
     depth = np.full(100, 1.0)
 
-    shallow_water_c = np.sqrt(_constants.GRAV * depth)
+    shallow_water_c = np.sqrt(settings.GRAV * depth)
     c = ld.intrinsic_phase_speed(k, depth)
 
-    assert_allclose(c, shallow_water_c, atol=0, rtol=_constants.RELATIVE_TOLERANCE)
+    assert_allclose(c, shallow_water_c, atol=0, rtol=settings.RELATIVE_TOLERANCE)
 
     # Deep water
     k = np.linspace(0.1, 1, 100)
     depth = np.full(100, 1000.0)
-    deep_water_omega = np.sqrt(_constants.GRAV / k)
+    deep_water_omega = np.sqrt(settings.GRAV / k)
     omega = ld.intrinsic_phase_speed(k, depth)
-    assert_allclose(omega, deep_water_omega, atol=0, rtol=_constants.RELATIVE_TOLERANCE)
+    assert_allclose(omega, deep_water_omega, atol=0, rtol=settings.RELATIVE_TOLERANCE)
 
     # Capillary waves
     k = np.linspace(10000, 100000, 10)
     depth = np.full(10, 1000.0)
-    capillary_omega = np.sqrt(_constants.KINEMATIC_SURFACE_TENSION * k)
+    capillary_omega = np.sqrt(settings.KINEMATIC_SURFACE_TENSION * k)
     omega = ld.intrinsic_phase_speed(k, depth)
-    assert_allclose(omega, capillary_omega, atol=0, rtol=_constants.RELATIVE_TOLERANCE)
+    assert_allclose(omega, capillary_omega, atol=0, rtol=settings.RELATIVE_TOLERANCE)
 
     try:
         # error on negative wavenumber magnitude
@@ -227,31 +227,31 @@ def test_intrinsic_group_speed():
     k = np.linspace(0, 0.01, 100)
     depth = np.full(100, 1.0)
 
-    shallow_water_c = np.sqrt(_constants.GRAV * depth)
+    shallow_water_c = np.sqrt(settings.GRAV * depth)
     c = ld.intrinsic_group_speed(k, depth)
-    assert_allclose(c, shallow_water_c, atol=0, rtol=_constants.RELATIVE_TOLERANCE)
+    assert_allclose(c, shallow_water_c, atol=0, rtol=settings.RELATIVE_TOLERANCE)
 
     # test with scalar depth
     k = np.linspace(0, 0.01, 100)
     depth = 1
 
-    shallow_water_c = np.sqrt(_constants.GRAV * depth) * np.ones(100)
+    shallow_water_c = np.sqrt(settings.GRAV * depth) * np.ones(100)
     c = ld.intrinsic_group_speed(k, depth)
-    assert_allclose(c, shallow_water_c, atol=0, rtol=_constants.RELATIVE_TOLERANCE)
+    assert_allclose(c, shallow_water_c, atol=0, rtol=settings.RELATIVE_TOLERANCE)
 
     # Deep water
     k = np.linspace(0.1, 1, 100)
     depth = np.full(100, 1000.0)
-    deep_water_omega = np.sqrt(_constants.GRAV / k) / 2
+    deep_water_omega = np.sqrt(settings.GRAV / k) / 2
     omega = ld.intrinsic_group_speed(k, depth)
-    assert_allclose(omega, deep_water_omega, atol=0, rtol=_constants.RELATIVE_TOLERANCE)
+    assert_allclose(omega, deep_water_omega, atol=0, rtol=settings.RELATIVE_TOLERANCE)
 
     # Capillary waves
     k = np.linspace(10000, 100000, 10)
     depth = np.full(10, 1000.0)
-    capillary_omega = 3 * np.sqrt(_constants.KINEMATIC_SURFACE_TENSION * k) / 2
+    capillary_omega = 3 * np.sqrt(settings.KINEMATIC_SURFACE_TENSION * k) / 2
     omega = ld.intrinsic_group_speed(k, depth)
-    assert_allclose(omega, capillary_omega, atol=0, rtol=_constants.RELATIVE_TOLERANCE)
+    assert_allclose(omega, capillary_omega, atol=0, rtol=settings.RELATIVE_TOLERANCE)
 
     try:
         # error on negative wavenumber magnitude

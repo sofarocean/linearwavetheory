@@ -7,3 +7,7 @@ from .dispersion import (
     encounter_phase_speed,
     encounter_group_speed,
 )
+
+from .settings import (
+    PhysicsOptions,
+)
