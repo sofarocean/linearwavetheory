@@ -28,6 +28,7 @@ _ABSOLUTE_TOLERANCE = np.inf
         ("_grav", float64),
         ("wave_type", unicode_type),
         ("wave_regime", unicode_type),
+        ("density", float64),
     ]
 )
 class PhysicsOptions(object):

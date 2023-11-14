@@ -66,8 +66,10 @@ def intrinsic_dispersion_relation(
 ) -> np.ndarray:
     """
     The intrinsic dispersion relation for linear gravity-capillary waves in water of constant depth that relates the
-    specific angular frequency to a given wavenumber and depth in a reference frame following mean ambient flow. I.e.
-    $$\\omega = \\sqrt{ ( g * k + \\tau * k**3 ) * \\tanh(k*d) }$$
+    specific angular frequency $\\sigma$ to a given wavenumber and depth in a reference frame following mean ambient
+    flow. I.e.
+
+    $$\\sigma = \\sqrt{ ( gk + \\tau k^3 ) \\tanh(kd) }$$
 
     with g gravitational acceleration, $\\tau$ kinematic surface tension, k wavenumber and d depth.
 
@@ -211,34 +213,6 @@ def inverse_intrinsic_dispersion_relation(
 
     :return: The wavenumber as a 1D numpy array. Note that even if a scalar is provided for the intrinsic angular
         frequency, a 1D array is returned.
-
-    Example
-    ```python
-    >>> from linearwavetheory import inverse_intrinsic_dispersion_relation
-    >>> import numpy as np
-    >>> import matplotlib.pyplot as plt
-    >>> f = np.linspace(0., 20, 1001)
-    >>> w = 2 * np.pi * f
-    >>> depth = 100
-
-    >>> k1 = inverse_intrinsic_dispersion_relation(w, depth)
-    >>> k2 = inverse_intrinsic_dispersion_relation(w, depth,PhysicsOptions(wave_type='gravity'))
-    >>> k3 = inverse_intrinsic_dispersion_relation(w, depth,PhysicsOptions(wave_regime='deep'))
-    >>> k4 = inverse_intrinsic_dispersion_relation(w, depth,PhysicsOptions(wave_regime='shallow'))
-    >>> k5 = inverse_intrinsic_dispersion_relation(w, depth,PhysicsOptions(wave_type='capillary'))
-    >>> _ = plt.plot(f, k1, label='with surface tension')
-    >>> _ = plt.plot(f, k2, label='without surface tension')
-    >>> _ = plt.plot(f, k3, label='deep water limit')
-    >>> _ = plt.plot(f, k4, label='shallow water limit')
-    >>> _ = plt.plot(f, k5, label='capillary limit')
-    >>> _ = plt.xlabel('frequency [Hz]')
-    >>> _ = plt.ylabel('wavenumber [rad/m]')
-    >>> _ = plt.grid('on', which='both')
-    >>> _ = plt.xscale('log')
-    >>> _ = plt.yscale('log')
-    >>> _ = plt.legend()
-    >>> _ = plt.show()
-    ```
     """
 
     # Numba does not recognize "atleast_1d" for scalars
