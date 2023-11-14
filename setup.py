@@ -11,6 +11,7 @@ setuptools.setup(
     install_requires=[
         "numpy",
         "numba",
+        "pdoc",
     ],
     description="Python package that implements linear wave theory for ocean surface gravity waves",
     long_description=readme_contents,
