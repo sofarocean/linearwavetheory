@@ -6,3 +6,4 @@ pre-commit
 black
 numba
 twine
+pdoc

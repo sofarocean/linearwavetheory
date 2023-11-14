@@ -1,20 +1,19 @@
 """
 Contents: Routines to calculate (inverse) linear dispersion relation and some related quantities such as phase and
 group velocity. All results are based on the dispersion relation in 2D for linear gravity waves for an observer moving
-at velocity Uo, with an ambient current Uc and including suface tension effects:
+at velocity $U_o$, with an ambient current $U_c$ and including suface tension effects
 
-        w = sqrt( ( ( g * k + tau * k**3 ) * tanh(k*d) ) + K dot Urel
+$$\\omega = \\sqrt{  ( g k + \\tau k^3 ) \\tanh(kd) } + \\vec{k} \\cdot \\vec{U}$$
 
 with
-
-    w   :: the encounter frequency,
-    g   :: gravitational acceleration
-    tau :: kinematice surface tension
-    k   :: wavenumber magnitude
-    d   :: depth
-    K   :: (kx,ky) intrinsic wavenumber vector.
-    Urel :: (Ux,Uy) current velocity vector in the observers reference frame. Typically the referene velocity is taken
-            in the earth reference frame.
+-    $\\omega$   :: the encounter frequency,
+-    g   :: gravitational acceleration
+-    $\\tau$ :: kinematice surface tension
+-    k   :: wavenumber magnitude
+-    d   :: depth
+ -   $\\vec{k}$   :: (kx,ky) intrinsic wavenumber vector.
+ -   $\\vec{U}_{\\text{rel}}$ :: (Ux,Uy) current velocity vector in the observers reference frame. Typically the
+    referene velocity is taken in the earth reference frame.
 
 where the wavenumber vector is defined such that in the intrinsic reference frame (moving with the waves) the wavenumber
 is directed into the direction of wave propagation. We refer to this as the intrinsic wavenumber.
@@ -31,35 +30,16 @@ Functions:
 - `encounter_phase_speed`, calculate the phase speed given wave number vector, depth and current velocity.
 - `encounter_group_speed`, calculate the group speed given wave number vector, depth and current velocity.
 
-Some notes:
----------
-- Evanesent waves are not supported.
-
-- I have used encounter frequency/phase velocity etc over the more commonly used absolute frequency/phase velocity.
-  a) This allows for inclusion of moving observers with regard to the earth reference frame,
-  b) the calling the earths reference frame an absolute reference frame is technically incorrect (though common),
-  c) the "absolute"  frequency may become negative for strong counter currents when using intrinsic wavenumbers,
-  which is confusing.
-
-- The implementation uses numba to speed up calculations. This allows for straightforward use of looping which is often
-  more consise as an implementation while retaining a python-like implementation. The downsides are (among others) that:
-  a) the first call to a function will be slow.
-  b) error messages are not always very informative due to LLVM compilation.
-  c) not all (numpy) functions are available in numba, leading to ugly workarounds. (e.g. np.atleast_1d as used here)
-
-Copyright (C) 2023
-Sofar Ocean Technologies
-
-Authors: Pieter Bart Smit
-======================
-
 """
 
 import numpy as np
 from numba import jit
-from .settings import PhysicsOptions, NumericalOptions, parse_options
-from ._array_shape_preprocessing import atleast_1d, _vector_preprocessing
-from ._dispersion_ufuncs import (
+from linearwavetheory.settings import PhysicsOptions, NumericalOptions, _parse_options
+from linearwavetheory._array_shape_preprocessing import (
+    atleast_1d,
+    _vector_preprocessing,
+)
+from linearwavetheory._dispersion_ufuncs import (
     _intrinsic_phase_speed_shallow,
     _intrinsic_phase_speed_intermediate,
     _intrinsic_phase_speed_deep,
@@ -74,7 +54,7 @@ from ._dispersion_ufuncs import (
     _inverse_intrinsic_dispersion_relation_deep,
 )
 
-from ._numba_settings import numba_default
+from linearwavetheory._numba_settings import numba_default
 from typing import Union
 
 
@@ -87,10 +67,9 @@ def intrinsic_dispersion_relation(
     """
     The intrinsic dispersion relation for linear gravity-capillary waves in water of constant depth that relates the
     specific angular frequency to a given wavenumber and depth in a reference frame following mean ambient flow. I.e.
+    $$\\omega = \\sqrt{ ( g * k + \\tau * k**3 ) * \\tanh(k*d) }$$
 
-        w = sqrt( ( ( g * k + tau * k**3 ) * tanh(k*d) )
-
-    with g gravitational acceleration, tau kinematic surface tension, k wavenumber and d depth.
+    with g gravitational acceleration, $\\tau$ kinematic surface tension, k wavenumber and d depth.
 
     NOTE:
         - if the wavenumber magnitude is zero, the intrinsic frequency is zero.
@@ -106,9 +85,9 @@ def intrinsic_dispersion_relation(
     :param physics_options: A PhysicsOptions object containing the physical parameters. If None, the default values are
         used.
 
-    :return: The intrinsic angular frequency as a 1 dimensional numpy array.
+    :return: The intrinsic angular frequency.
     """
-    numerical_option, physics_options = parse_options(None, physics_options)
+    numerical_option, physics_options = _parse_options(None, physics_options)
 
     wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
     if np.any(wavenumber_magnitude < 0.0):
@@ -164,7 +143,7 @@ def intrinsic_group_speed(
     if np.any(wavenumber_magnitude < 0):
         raise ValueError("Wavenumber magnitude must be positive")
 
-    numerical_option, physics_options = parse_options(None, physics_options)
+    numerical_option, physics_options = _parse_options(None, physics_options)
 
     args = (
         wavenumber_magnitude,
@@ -243,22 +222,22 @@ def inverse_intrinsic_dispersion_relation(
     >>> depth = 100
 
     >>> k1 = inverse_intrinsic_dispersion_relation(w, depth)
-    >>> k2 = inverse_intrinsic_dispersion_relation(w, depth,wave_type='gravity')
-    >>> k3 = inverse_intrinsic_dispersion_relation(w, depth,wave_regime='deep')
-    >>> k4 = inverse_intrinsic_dispersion_relation(w, depth,wave_regime='shallow')
-    >>> k5 = inverse_intrinsic_dispersion_relation(w, depth,wave_type='capillary')
-    >>> plt.plot(f, k1, label='with surface tension')
-    >>> plt.plot(f, k2, label='without surface tension')
-    >>> plt.plot(f, k3, label='deep water limit')
-    >>> plt.plot(f, k4, label='shallow water limit')
-    >>> plt.plot(f, k5, label='capillary limit')
-    >>> plt.xlabel('frequency [Hz]')
-    >>> plt.ylabel('wavenumber [rad/m]')
-    >>> plt.grid('on', which='both')
-    >>> plt.xscale('log')
-    >>> plt.yscale('log')
-    >>> plt.legend()
-    >>> plt.show()
+    >>> k2 = inverse_intrinsic_dispersion_relation(w, depth,PhysicsOptions(wave_type='gravity'))
+    >>> k3 = inverse_intrinsic_dispersion_relation(w, depth,PhysicsOptions(wave_regime='deep'))
+    >>> k4 = inverse_intrinsic_dispersion_relation(w, depth,PhysicsOptions(wave_regime='shallow'))
+    >>> k5 = inverse_intrinsic_dispersion_relation(w, depth,PhysicsOptions(wave_type='capillary'))
+    >>> _ = plt.plot(f, k1, label='with surface tension')
+    >>> _ = plt.plot(f, k2, label='without surface tension')
+    >>> _ = plt.plot(f, k3, label='deep water limit')
+    >>> _ = plt.plot(f, k4, label='shallow water limit')
+    >>> _ = plt.plot(f, k5, label='capillary limit')
+    >>> _ = plt.xlabel('frequency [Hz]')
+    >>> _ = plt.ylabel('wavenumber [rad/m]')
+    >>> _ = plt.grid('on', which='both')
+    >>> _ = plt.xscale('log')
+    >>> _ = plt.yscale('log')
+    >>> _ = plt.legend()
+    >>> _ = plt.show()
     ```
     """
 
@@ -266,7 +245,7 @@ def inverse_intrinsic_dispersion_relation(
     intrinsic_angular_frequency = atleast_1d(intrinsic_angular_frequency)
     depth = atleast_1d(depth)
 
-    numerical_options, physics_options = parse_options(
+    numerical_options, physics_options = _parse_options(
         numerical_options, physics_options
     )
 
@@ -313,8 +292,8 @@ def encounter_dispersion_relation(
 
     Input
     -----
-    :param intrinsic_wavenumber_vector: Wavenumber (rad/m) in the intrinsic frame of reference of the wave specified as a 1D
-    numpy array (kx,ky), or as a 2D numpy array with shape (N,2) where N is the number of wavenumbers.
+    :param intrinsic_wavenumber_vector: Wavenumber (rad/m) in the intrinsic frame of reference of the wave specified as
+    a 1D numpy array (kx,ky), or as a 2D numpy array with shape (N,2) where N is the number of wavenumbers.
 
     :param depth: Depth (m). May be a scalar or a numpy array. If a numpy array, must have the same number of rows as
     the number of wavenumbers in intrinsic_wavenumber.
@@ -385,7 +364,7 @@ def intrinsic_phase_speed(
     if np.any(wavenumber_magnitude < 0):
         raise ValueError("Wavenumber magnitude must be positive")
 
-    numerical_options, physics_options = parse_options(None, physics_options)
+    numerical_options, physics_options = _parse_options(None, physics_options)
 
     # Function pointer would be nicer- but I could not get it to work with numba typing
     args = (
@@ -425,8 +404,8 @@ def encounter_phase_velocity(
 
     Input
     -----
-    :param intrinsic_wavenumber_vector: Wavenumber (rad/m) in the intrinsic frame of reference of the wave specified as a 1D
-    numpy array (kx,ky), or as a 2D numpy array with shape (N,2) where N is the number of wavenumbers.
+    :param intrinsic_wavenumber_vector: Wavenumber (rad/m) in the intrinsic frame of reference of the wave specified as
+    a 1D numpy array (kx,ky), or as a 2D numpy array with shape (N,2) where N is the number of wavenumbers.
 
     :param depth: Depth (m). May be a scalar or a numpy array. If a numpy array, must have the same number of rows as
     the number of wavenumbers in intrinsic_wavenumber.
@@ -528,8 +507,8 @@ def encounter_group_velocity(
 
     Input
     -----
-    :param intrinsic_wavenumber_vector: Wavenumber (rad/m) in the intrinsic frame of reference of the wave specified as a 1D
-    numpy array (kx,ky), or as a 2D numpy array with shape (N,2) where N is the number of wavenumbers.
+    :param intrinsic_wavenumber_vector: Wavenumber (rad/m) in the intrinsic frame of reference of the wave specified as
+    a 1D numpy array (kx,ky), or as a 2D numpy array with shape (N,2) where N is the number of wavenumbers.
 
     :param depth: Depth (m). May be a scalar or a numpy array. If a numpy array, must have the same number of rows as
     the number of wavenumbers in intrinsic_wavenumber.

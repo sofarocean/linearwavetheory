@@ -20,8 +20,11 @@ _inverse_intrinsic_relation_signatures = [
 def _intrinsic_dispersion_relation_deep(
     wavenumber_magnitude, depth, kinematic_surface_tension, grav
 ):
-    return wavenumber_magnitude * np.sqrt(
-        (depth) * (grav + kinematic_surface_tension * wavenumber_magnitude**2)
+    return np.sqrt(
+        (
+            grav * wavenumber_magnitude
+            + kinematic_surface_tension * wavenumber_magnitude**3
+        )
     )
 
 
@@ -31,9 +34,10 @@ def _intrinsic_dispersion_relation_shallow(
 ):
     return np.sqrt(
         (
-            grav * wavenumber_magnitude
-            + kinematic_surface_tension * wavenumber_magnitude**3
+            grav * wavenumber_magnitude**2
+            + kinematic_surface_tension * wavenumber_magnitude**4
         )
+        * depth
     )
 
 
@@ -244,7 +248,6 @@ def _inverse_intrinsic_dispersion_relation_shallow(
             + innerproduct * wavenumber_estimate
             - intrinsic_angular_frequency
         )
-
         if (
             np.abs(error) < absolute_tolerance
             and np.abs(error / intrinsic_angular_frequency) < relative_tolerance
