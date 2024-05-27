@@ -1,1 +1,1 @@
-from _third_order_statistics import surface_elevation_skewness
+from ._third_order_statistics import surface_elevation_skewness
