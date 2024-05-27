@@ -14,7 +14,7 @@ import numpy as np
 _GRAV = 9.80665
 _SURFACE_TENSION = 0.074
 _WATER_DENSITY = 1025.0
-_KINEMATIC_SURFACE_TENSION = 7.21951219512195e-05
+_KINEMATIC_SURFACE_TENSION = _SURFACE_TENSION / _WATER_DENSITY
 
 # Default Numerical Parameters
 _RELATIVE_TOLERANCE = 1e-3
@@ -48,11 +48,13 @@ class PhysicsOptions(object):
 
     def __init__(
         self,
-        kinematic_surface_tension: float,
-        grav: float,
-        wave_type: Literal["gravity-capillary", "gravity", "capillary"],
-        wave_regime: Literal["deep", "intermediate", "shallow"],
-        water_density: float,
+        kinematic_surface_tension: float = _KINEMATIC_SURFACE_TENSION,
+        grav: float = _GRAV,
+        wave_type: Literal[
+            "gravity-capillary", "gravity", "capillary"
+        ] = "gravity-capillary",
+        wave_regime: Literal["deep", "intermediate", "shallow"] = "intermediate",
+        water_density: float = _WATER_DENSITY,
     ):
         """
         Create object to represent physical properties of the fluid and environment.
@@ -129,9 +131,9 @@ class NumericalOptions(object):
 
     def __init__(
         self,
-        relative_tolerance: float,
-        absolute_tolerance: float,
-        maximum_number_of_iterations: int,
+        relative_tolerance: float = _RELATIVE_TOLERANCE,
+        absolute_tolerance: float = _ABSOLUTE_TOLERANCE,
+        maximum_number_of_iterations: int = _MAXIMUM_NUMBER_OF_ITERATIONS,
     ):
 
         if relative_tolerance < 0.0:
