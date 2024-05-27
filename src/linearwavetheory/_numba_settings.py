@@ -19,6 +19,9 @@ numba_default = {
     "boundscheck": _boundscheck,
 }
 
+numba_default_not_cached = numba_default.copy()
+numba_default_not_cached["cache"] = False
+
 numba_default_vectorize = {
     "nopython": _nopython,
     "cache": _cache,

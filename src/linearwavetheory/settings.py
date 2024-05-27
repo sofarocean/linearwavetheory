@@ -5,7 +5,7 @@ for the linear wave theory package. The numerical parameters are used to determi
 solution, while the physical parameters are used to determine the physical properties of the fluid and its environment.
 """
 from numba import float64, int64, jit
-from ._numba_settings import numba_default
+from ._numba_settings import numba_default_not_cached
 from numba.core.types import unicode_type
 from numba.experimental import jitclass
 from typing import Literal
@@ -48,13 +48,11 @@ class PhysicsOptions(object):
 
     def __init__(
         self,
-        kinematic_surface_tension: float = _KINEMATIC_SURFACE_TENSION,
-        grav: float = _GRAV,
-        wave_type: Literal[
-            "gravity-capillary", "gravity", "capillary"
-        ] = "gravity-capillary",
-        wave_regime: Literal["deep", "intermediate", "shallow"] = "intermediate",
-        water_density: float = _WATER_DENSITY,
+        kinematic_surface_tension: float,
+        grav: float,
+        wave_type: Literal["gravity-capillary", "gravity", "capillary"],
+        wave_regime: Literal["deep", "intermediate", "shallow"],
+        water_density: float,
     ):
         """
         Create object to represent physical properties of the fluid and environment.
@@ -131,9 +129,9 @@ class NumericalOptions(object):
 
     def __init__(
         self,
-        relative_tolerance: float = _RELATIVE_TOLERANCE,
-        absolute_tolerance: float = _ABSOLUTE_TOLERANCE,
-        maximum_number_of_iterations: int = _MAXIMUM_NUMBER_OF_ITERATIONS,
+        relative_tolerance: float,
+        absolute_tolerance: float,
+        maximum_number_of_iterations: int,
     ):
 
         if relative_tolerance < 0.0:
@@ -150,7 +148,7 @@ class NumericalOptions(object):
         self.maximum_number_of_iterations = maximum_number_of_iterations
 
 
-@jit(**numba_default)
+@jit(**numba_default_not_cached)
 def _parse_options(numerical, physical):
     """
     parse input options and return default classes if None. A word of warning. Calling this function from within a numba

@@ -52,6 +52,15 @@ def test_coef_second_order_surface_elevation():
         _stokes_setdown = stokes_setdown(k, depth)
         assert np.isclose(_setdown, 2 * _stokes_setdown, rtol=1e-5, atol=1e-5)
 
+    # Test it works for infinite depth
+    depth = np.inf
+    k = 1
+    c12 = _second_order_surface_elevation(k, 0, 1.0, k, 0, 1, depth, grav)
+    assert np.isfinite(c12)
+
+    c12 = _second_order_surface_elevation(k, 0, 1.0, k, 0, -1, depth, grav)
+    assert np.isfinite(c12)
+
 
 def test_coef_second_order_lagrangian_surface_elevation():
 
@@ -96,6 +105,16 @@ def test_skewness_spectrum():
     assert np.isclose(
         skewness / np.sqrt(_var**3), 0.48861658091281845, rtol=1e-5, atol=1e-5
     )
+
+    # Test it works for infinite depth
+    depth = np.inf
+    skewness = surface_elevation_skewness(
+        freq,
+        dir,
+        spec,
+        depth=depth,
+    )
+    print(skewness)
 
 
 def test_skewness_stokeswave():

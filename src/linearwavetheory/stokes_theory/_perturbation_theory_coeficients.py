@@ -44,8 +44,14 @@ def _second_order_potential(
     inner_product = (
         sign_index1 * sign_index2 * k_mag1 * k_mag2 * np.cos(k_dir1 - k_dir2)
     )
-    w1 = np.sqrt(grav * k_mag1 * np.tanh(k_mag1 * depth)) * sign_index1
-    w2 = np.sqrt(grav * k_mag2 * np.tanh(k_mag2 * depth)) * sign_index2
+
+    if np.isinf(depth):
+        # Note if depth is infinite and ksum == 0, then the tanh in undefined.
+        w1 = np.sqrt(grav * k_mag1) * sign_index1
+        w2 = np.sqrt(grav * k_mag2) * sign_index2
+    else:
+        w1 = np.sqrt(grav * k_mag1 * np.tanh(k_mag1 * depth)) * sign_index1
+        w2 = np.sqrt(grav * k_mag2 * np.tanh(k_mag2 * depth)) * sign_index2
 
     wsum = w1 + w2
     ksum = np.sqrt(
@@ -57,7 +63,13 @@ def _second_order_potential(
         )
         ** 2
     )
-    w12 = np.sqrt(grav * ksum * np.tanh(ksum * depth))
+
+    if np.isinf(depth):
+        # Note if depth is infinite and ksum == 0, then the tanh in undefined.
+        w12 = np.sqrt(grav * ksum)
+    else:
+        w12 = np.sqrt(grav * ksum * np.tanh(ksum * depth))
+
     if w12 == wsum:
         return 0.0
 
@@ -101,8 +113,14 @@ def _second_order_surface_elevation(
     inner_product = (
         k_mag1 * k_mag2 * np.cos(k_dir1 - k_dir2) * sign_index1 * sign_index2
     )
-    w1 = np.sqrt(grav * k_mag1 * np.tanh(k_mag1 * depth)) * sign_index1
-    w2 = np.sqrt(grav * k_mag2 * np.tanh(k_mag2 * depth)) * sign_index2
+    if np.isinf(depth):
+        # Note if depth is infinite and ksum == 0, then the tanh in undefined.
+        w1 = np.sqrt(grav * k_mag1) * sign_index1
+        w2 = np.sqrt(grav * k_mag2) * sign_index2
+    else:
+        w1 = np.sqrt(grav * k_mag1 * np.tanh(k_mag1 * depth)) * sign_index1
+        w2 = np.sqrt(grav * k_mag2 * np.tanh(k_mag2 * depth)) * sign_index2
+
     coef_second_order_potential = _second_order_potential(
         k_mag1, k_dir1, sign_index1, k_mag2, k_dir2, sign_index2, depth, grav
     )
@@ -135,8 +153,14 @@ def _second_order_lagrangian_surface_elevation(
     inner_product = (
         k_mag1 * k_mag2 * np.cos(k_dir1 - k_dir2) * sign_index1 * sign_index2
     )
-    w1 = np.sqrt(grav * k_mag1 * np.tanh(k_mag1 * depth)) * sign_index1
-    w2 = np.sqrt(grav * k_mag2 * np.tanh(k_mag2 * depth)) * sign_index2
+    if np.isinf(depth):
+        # Note if depth is infinite and ksum == 0, then the tanh in undefined.
+        w1 = np.sqrt(grav * k_mag1) * sign_index1
+        w2 = np.sqrt(grav * k_mag2) * sign_index2
+    else:
+        w1 = np.sqrt(grav * k_mag1 * np.tanh(k_mag1 * depth)) * sign_index1
+        w2 = np.sqrt(grav * k_mag2 * np.tanh(k_mag2 * depth)) * sign_index2
+
     coef_second_order_eulerian_surface_elevation = _second_order_surface_elevation(
         k_mag1, k_dir1, sign_index1, k_mag2, k_dir2, sign_index2, depth, grav
     )
