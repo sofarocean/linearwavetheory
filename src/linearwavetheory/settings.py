@@ -4,11 +4,10 @@ are used to determine the numerical parameters for the linear wave theory packag
 for the linear wave theory package. The numerical parameters are used to determine the accuracy of the numerical
 solution, while the physical parameters are used to determine the physical properties of the fluid and its environment.
 """
-from numba import float64, int64, jit
-from ._numba_settings import numba_default_not_cached
-from numba.core.types import unicode_type
-from numba.experimental import jitclass
-from typing import Literal
+from numba import jit
+from ._numba_settings import numba_default
+
+from collections import namedtuple
 import numpy as np
 
 _GRAV = 9.80665
@@ -21,136 +20,98 @@ _RELATIVE_TOLERANCE = 1e-3
 _MAXIMUM_NUMBER_OF_ITERATIONS = 10
 _ABSOLUTE_TOLERANCE = np.inf
 
+_default_physics_options = {
+    "kinematic_surface_tension": _KINEMATIC_SURFACE_TENSION,
+    "grav": _GRAV,
+    "wave_type": "gravity-capillary",
+    "wave_regime": "intermediate",
+    "density": _WATER_DENSITY,
+}
 
-@jitclass(
-    [
-        ("_kinematic_surface_tension", float64),
-        ("_grav", float64),
-        ("wave_type", unicode_type),
-        ("wave_regime", unicode_type),
-        ("density", float64),
-    ]
+PhysicsOptions = namedtuple(
+    "PhysicsOptions", [*list(_default_physics_options.keys()), "wave_regime_enum"]
 )
-class PhysicsOptions(object):
-    """
-    Physics options for the linear wave theory package. Contains the following attributes:
-
-    - kinematic_surface_tension: kinematic surface tension of the fluid
-    - grav: gravitational acceleration
-    - wave_type: "gravity", "capillary", or "gravity-capillary", determines which dispersion relation to use for
-        properties derived from the linear dispersion relation (wavenumber, groupspeed, etc.)
-    - wave_regime: "deep", "intermediate", or "shallow", determines which limit of the dispersion relation to use for
-        properties derived from the linear dispersion relation (wavenumber, groupspeed, etc.)
-
-    Default values are: kinematic_surface_tension=0.074, grav=9.80665, wave_type="gravity-capillary",
-    wave_regime="intermediate"
-    """
-
-    def __init__(
-        self,
-        kinematic_surface_tension: float = _KINEMATIC_SURFACE_TENSION,
-        grav: float = _GRAV,
-        wave_type: Literal[
-            "gravity-capillary", "gravity", "capillary"
-        ] = "gravity-capillary",
-        wave_regime: Literal["deep", "intermediate", "shallow"] = "intermediate",
-        water_density: float = _WATER_DENSITY,
-    ):
-        """
-        Create object to represent physical properties of the fluid and environment.
-
-        :param kinematic_surface_tension: kinematic surface tension of the fluid
-        :param grav: gravitational acceleration
-        :param wave_type: which dispersion relation to use for properties derived from the linear dispersion relation
-            one of "gravity", "capillary", or "gravity-capillary"
-        :param wave_regime: which limit of the dispersion relation to use for properties derived from the linear
-        dispersion relation, one of "deep", "intermediate", or "shallow"
-        :param water_density: density of the fluid
-        """
-        if grav < 0:
-            raise ValueError("Gravity must be positive")
-
-        if kinematic_surface_tension < 0:
-            raise ValueError("Surface tension must be positive")
-
-        if wave_type not in ["gravity", "capillary", "gravity-capillary"]:
-            raise ValueError(
-                "Wave type must be one of 'gravity', 'capillary', or 'gravity-capillary'"
-            )
-
-        if wave_regime not in ["deep", "intermediate", "shallow"]:
-            raise ValueError(
-                "Wave regime must be one of 'deep', 'intermediate', or 'shallow'"
-            )
-
-        self._kinematic_surface_tension = kinematic_surface_tension
-        self._grav = grav
-        self.wave_type = wave_type
-        self.wave_regime = wave_regime
-        self.density = water_density
-
-    @property
-    def kinematic_surface_tension(self) -> float:
-        if self.wave_type == "gravity":
-            return 0.0
-        else:
-            return self._kinematic_surface_tension
-
-    @property
-    def grav(self) -> float:
-        if self.wave_type == "capillary":
-            return 0.0
-        else:
-            return self._grav
-
-    @property
-    def wave_regime_enum(self) -> int:
-        if self.wave_regime == "deep":
-            return 1
-        elif self.wave_regime == "shallow":
-            return 2
-        else:
-            return 0
 
 
-@jitclass(
+def physics_options(**kwargs) -> PhysicsOptions:
+    for key in kwargs:
+        if key not in _default_physics_options:
+            raise ValueError(f"Unknown key {key}")
+
+    _physics_options = _default_physics_options.copy() | kwargs
+    if _physics_options["grav"] < 0:
+        raise ValueError("Gravity must be positive")
+
+    if _physics_options["kinematic_surface_tension"] < 0:
+        raise ValueError("Surface tension must be positive")
+
+    if _physics_options["wave_type"] not in [
+        "gravity",
+        "capillary",
+        "gravity-capillary",
+    ]:
+        raise ValueError(
+            "Wave type must be one of 'gravity', 'capillary', or 'gravity-capillary'"
+        )
+
+    if _physics_options["wave_regime"] not in ["deep", "intermediate", "shallow"]:
+        raise ValueError(
+            "Wave regime must be one of 'deep', 'intermediate', or 'shallow'"
+        )
+
+    if _physics_options["wave_type"] == "gravity":
+        _physics_options["kinematic_surface_tension"] = 0.0
+
+    elif _physics_options["wave_type"] == "capillary":
+        _physics_options["grav"] = 0.0
+
+    if _physics_options["wave_regime"] == "deep":
+        _physics_options["wave_regime_enum"] = 1
+    elif _physics_options["wave_regime"] == "shallow":
+        _physics_options["wave_regime_enum"] = 2
+    else:
+        _physics_options["wave_regime_enum"] = 0
+
+    return PhysicsOptions(**_physics_options)
+
+
+_default_numerical_options = {
+    "relative_tolerance": _RELATIVE_TOLERANCE,
+    "absolute_tolerance": _ABSOLUTE_TOLERANCE,
+    "maximum_number_of_iterations": _MAXIMUM_NUMBER_OF_ITERATIONS,
+}
+
+NumericalOptions = namedtuple(
+    "NumericalOptions",
     [
-        ("relative_tolerance", float64),
-        ("absolute_tolerance", float64),
-        ("maximum_number_of_iterations", int64),
-    ]
+        *list(_default_numerical_options.keys()),
+    ],
 )
-class NumericalOptions(object):
-    """
-    Numerical options for the linear wave theory package. These options are used when solving the inverse dispersion
-    relation numerically using Newton iteration. Contains the following attributes:
-    - relative_tolerance: relative tolerance for the numerical solver
-    - absolute_tolerance: absolute tolerance for the numerical solver
-    - maximum_number_of_iterations: maximum number of iterations for the numerical solver
-    """
-
-    def __init__(
-        self,
-        relative_tolerance: float = _RELATIVE_TOLERANCE,
-        absolute_tolerance: float = _ABSOLUTE_TOLERANCE,
-        maximum_number_of_iterations: int = _MAXIMUM_NUMBER_OF_ITERATIONS,
-    ):
-
-        if relative_tolerance < 0.0:
-            raise ValueError("Relative tolerance must be positive")
-
-        if absolute_tolerance < 0.0:
-            raise ValueError("Absolute tolerance must be positive")
-
-        if maximum_number_of_iterations < 1:
-            raise ValueError("Maximum number of iterations must be at least 1")
-
-        self.relative_tolerance = relative_tolerance
-        self.absolute_tolerance = absolute_tolerance
-        self.maximum_number_of_iterations = maximum_number_of_iterations
 
 
-@jit(**numba_default_not_cached)
+def numerical_options(**kwargs) -> NumericalOptions:
+    for key in kwargs:
+        if key not in _default_numerical_options:
+            raise ValueError(f"Unknown key {key}")
+
+    _numerical_options = _default_numerical_options.copy() | kwargs
+    if _numerical_options["relative_tolerance"] < 0:
+        raise ValueError("Relative tolerance must be positive")
+
+    if _numerical_options["absolute_tolerance"] < 0:
+        raise ValueError("Absolute tolerance must be positive")
+
+    if _numerical_options["maximum_number_of_iterations"] < 1:
+        raise ValueError("Maximum number of iterations must be at least 1")
+
+    return NumericalOptions(**_numerical_options)
+
+
+default_numerical_options = numerical_options()
+default_physical_options = physics_options()
+
+
+@jit(**numba_default)
 def _parse_options(numerical, physical):
     """
     parse input options and return default classes if None. A word of warning. Calling this function from within a numba
@@ -162,16 +123,9 @@ def _parse_options(numerical, physical):
     :return:
     """
     if numerical is None:
-        numerical = NumericalOptions(
-            _RELATIVE_TOLERANCE, _ABSOLUTE_TOLERANCE, _MAXIMUM_NUMBER_OF_ITERATIONS
-        )
+        numerical = default_numerical_options
 
     if physical is None:
-        physical = PhysicsOptions(
-            _KINEMATIC_SURFACE_TENSION,
-            _GRAV,
-            "gravity-capillary",
-            "intermediate",
-            _WATER_DENSITY,
-        )
+        physical = default_physical_options
+
     return numerical, physical
