@@ -6,7 +6,7 @@ with open("README.md", "r") as file:
 
 setuptools.setup(
     name="linearwavetheory",
-    version="0.0.11",
+    version="0.0.12",
     license="Apache 2 License",
     install_requires=[
         "numpy",
