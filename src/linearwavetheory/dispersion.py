@@ -123,7 +123,7 @@ def intrinsic_group_speed(
         cg = dw / dk
 
     NOTE:
-        - if the wavenumber magnitude is zero, the group speed is defined as it's limiting value as k-> 0
+        - if the wavenumber magnitude is zero, the group speed is defined as its limiting value as k-> 0
             (the shallow water group speed).
         - if the depth is smaller or equal to zero, the group speed is undefined and np.nan is returned.
         - if the wavenumber magnitude is negative, we return an error (undefined).
