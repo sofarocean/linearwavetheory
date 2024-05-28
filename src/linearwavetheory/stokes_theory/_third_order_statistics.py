@@ -59,34 +59,52 @@ def _skewness_from_spectrum(
     frequency_bin = _frequency_bin(frequency)
     direction_bin = _direction_bin(direction, wrap=360)
 
+    dirgrid1 = np.zeros((nd, nd, 2, 2))
+    dirgrid2 = np.zeros((nd, nd, 2, 2))
+    signgrid1 = np.zeros((nd, nd, 2, 2))
+    signgrid2 = np.zeros((nd, nd, 2, 2))
+
+    for i in range(nd):
+        for j in range(nd):
+            dirgrid1[i, j, :, :] = radian_direction[i]
+            dirgrid2[i, j, :, :] = radian_direction[j]
+            signgrid1[i, j, 0, 0] = 1
+            signgrid1[i, j, 0, 1] = -1
+            signgrid1[i, j, 1, 0] = 1
+            signgrid1[i, j, 1, 1] = -1
+            signgrid2[i, j, 0, 0] = -1
+            signgrid2[i, j, 0, 1] = -1
+            signgrid2[i, j, 1, 0] = 1
+            signgrid2[i, j, 1, 1] = 1
+
+    # dirgrid1,dirgrid2,signgrid1,signgrid2 = np.meshgrid(radian_direction, radian_direction)
+
     _skewness = 0.0
     for _freq1 in range(0, nf):
         for _freq2 in range(0, nf):
+            _interaction_coefficient = interaction_coefficient_function(
+                wavenumber[_freq1],
+                dirgrid1,
+                signgrid1,
+                wavenumber[_freq2],
+                dirgrid2,
+                signgrid2,
+                depth,
+                grav,
+            )
+            if _freq1 == _freq2:
+                for _dir in range(0, nd):
+                    _interaction_coefficient[_dir, _dir, 0, 1] = 0
+                    _interaction_coefficient[_dir, _dir, 1, 0] = 0
+
             for _dir1 in range(0, nd):
                 for _dir2 in range(0, nd):
-                    interaction_coefficient = 0.0
-                    for sign_index1 in [-1, 1]:
-                        for sign_index2 in [-1, 1]:
-                            if (
-                                _freq1 == _freq2
-                                and _dir1 == _dir2
-                                and sign_index1 == -sign_index2
-                            ):
-                                # Disregard the zero interaction coefficient- we assume the signal is zero-mean.
-                                # This effectively neglects e.g. setdown which - because it is a constant contribution
-                                # requires a different treatment.
-                                continue
-
-                            interaction_coefficient += interaction_coefficient_function(
-                                wavenumber[_freq1],
-                                radian_direction[_dir1],
-                                sign_index1,
-                                wavenumber[_freq2],
-                                radian_direction[_dir2],
-                                sign_index2,
-                                depth,
-                                grav,
-                            )
+                    interaction_coefficient = (
+                        _interaction_coefficient[_dir1, _dir2, 0, 0]
+                        + _interaction_coefficient[_dir1, _dir2, 0, 1]
+                        + _interaction_coefficient[_dir1, _dir2, 1, 0]
+                        + _interaction_coefficient[_dir1, _dir2, 1, 1]
+                    )
 
                     hyper_volume = (
                         frequency_bin[_freq1]
