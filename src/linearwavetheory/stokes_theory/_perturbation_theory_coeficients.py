@@ -3,16 +3,60 @@ from linearwavetheory._numba_settings import numba_default_vectorize
 import numpy as np
 
 _interaction_signatures = [
-    float64(float64, float64, float64, float64, float64, float64, float64, float64),
-    float32(float32, float32, float32, float32, float32, float32, float32, float32),
-    float32(float32, float32, float32, float32, float32, float32, float32, float64),
-    float32(float32, float32, float32, float32, float32, float32, float64, float64),
+    float64(
+        float64,
+        float64,
+        float64,
+        float64,
+        float64,
+        float64,
+        float64,
+        float64,
+        float64,
+        float64,
+    ),
+    float32(
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+    ),
+    float32(
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float64,
+    ),
+    float32(
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float32,
+        float64,
+        float64,
+    ),
 ]
 
 
 @vectorize(_interaction_signatures, **numba_default_vectorize)
 def _second_order_potential(
-    k_mag1, k_dir1, sign_index1, k_mag2, k_dir2, sign_index2, depth, grav
+    w1, k_mag1, k_dir1, sign_index1, w2, k_mag2, k_dir2, sign_index2, depth, grav
 ):
     """
     Calculate the second order potential interaction coefficient for two wave components with wavenumber magnitude
@@ -44,14 +88,6 @@ def _second_order_potential(
     inner_product = (
         sign_index1 * sign_index2 * k_mag1 * k_mag2 * np.cos(k_dir1 - k_dir2)
     )
-
-    if np.isinf(depth):
-        # Note if depth is infinite and ksum == 0, then the tanh in undefined.
-        w1 = np.sqrt(grav * k_mag1) * sign_index1
-        w2 = np.sqrt(grav * k_mag2) * sign_index2
-    else:
-        w1 = np.sqrt(grav * k_mag1 * np.tanh(k_mag1 * depth)) * sign_index1
-        w2 = np.sqrt(grav * k_mag2 * np.tanh(k_mag2 * depth)) * sign_index2
 
     wsum = w1 + w2
     ksum = np.sqrt(
@@ -95,7 +131,7 @@ def _second_order_potential(
 
 @vectorize(_interaction_signatures, **numba_default_vectorize)
 def _second_order_surface_elevation(
-    k_mag1, k_dir1, sign_index1, k_mag2, k_dir2, sign_index2, depth, grav
+    w1, k_mag1, k_dir1, sign_index1, w2, k_mag2, k_dir2, sign_index2, depth, grav
 ):
     """
     Calculate the second order Eulerian surface elevation interaction coefficient for two wave components. For details,
@@ -113,16 +149,9 @@ def _second_order_surface_elevation(
     inner_product = (
         k_mag1 * k_mag2 * np.cos(k_dir1 - k_dir2) * sign_index1 * sign_index2
     )
-    if np.isinf(depth):
-        # Note if depth is infinite and ksum == 0, then the tanh in undefined.
-        w1 = np.sqrt(grav * k_mag1) * sign_index1
-        w2 = np.sqrt(grav * k_mag2) * sign_index2
-    else:
-        w1 = np.sqrt(grav * k_mag1 * np.tanh(k_mag1 * depth)) * sign_index1
-        w2 = np.sqrt(grav * k_mag2 * np.tanh(k_mag2 * depth)) * sign_index2
 
     coef_second_order_potential = _second_order_potential(
-        k_mag1, k_dir1, sign_index1, k_mag2, k_dir2, sign_index2, depth, grav
+        w1, k_mag1, k_dir1, sign_index1, w2, k_mag2, k_dir2, sign_index2, depth, grav
     )
     return (
         -(w1 + w2) / grav * coef_second_order_potential
@@ -133,7 +162,7 @@ def _second_order_surface_elevation(
 
 @vectorize(_interaction_signatures, **numba_default_vectorize)
 def _second_order_lagrangian_surface_elevation(
-    k_mag1, k_dir1, sign_index1, k_mag2, k_dir2, sign_index2, depth, grav
+    w1, k_mag1, k_dir1, sign_index1, w2, k_mag2, k_dir2, sign_index2, depth, grav
 ):
     """
     Calculate the second order Lagrangian surface elevation interaction coefficient for two wave components. For
@@ -153,16 +182,9 @@ def _second_order_lagrangian_surface_elevation(
     inner_product = (
         k_mag1 * k_mag2 * np.cos(k_dir1 - k_dir2) * sign_index1 * sign_index2
     )
-    if np.isinf(depth):
-        # Note if depth is infinite and ksum == 0, then the tanh in undefined.
-        w1 = np.sqrt(grav * k_mag1) * sign_index1
-        w2 = np.sqrt(grav * k_mag2) * sign_index2
-    else:
-        w1 = np.sqrt(grav * k_mag1 * np.tanh(k_mag1 * depth)) * sign_index1
-        w2 = np.sqrt(grav * k_mag2 * np.tanh(k_mag2 * depth)) * sign_index2
 
     coef_second_order_eulerian_surface_elevation = _second_order_surface_elevation(
-        k_mag1, k_dir1, sign_index1, k_mag2, k_dir2, sign_index2, depth, grav
+        w1, k_mag1, k_dir1, sign_index1, w2, k_mag2, k_dir2, sign_index2, depth, grav
     )
 
     return (
