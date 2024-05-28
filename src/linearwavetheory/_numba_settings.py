@@ -22,6 +22,9 @@ numba_default = {
 numba_default_not_cached = numba_default.copy()
 numba_default_not_cached["cache"] = False
 
+numba_default_parallel = numba_default.copy()
+numba_default_parallel["parallel"] = True
+
 numba_default_vectorize = {
     "nopython": _nopython,
     "cache": _cache,

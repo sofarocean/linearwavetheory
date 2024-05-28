@@ -5,8 +5,8 @@ from linearwavetheory.settings import PhysicsOptions, _parse_options
 from linearwavetheory import inverse_intrinsic_dispersion_relation
 from linearwavetheory._array_shape_preprocessing import atleast_1d
 from typing import Union
-from numba import jit
-from linearwavetheory._numba_settings import numba_default
+from numba import jit, prange
+from linearwavetheory._numba_settings import numba_default, numba_default_parallel
 import numpy as np
 
 
@@ -60,10 +60,12 @@ def _skewness_from_spectrum(
     frequency_bin = _frequency_bin(frequency)
     direction_bin = _direction_bin(direction, wrap=360)
 
-    dirgrid1 = np.zeros((nd, nd, 2, 2))
-    dirgrid2 = np.zeros((nd, nd, 2, 2))
-    signgrid1 = np.zeros((nd, nd, 2, 2))
-    signgrid2 = np.zeros((nd, nd, 2, 2))
+    dirgrid1 = np.empty((nd, nd, 2, 2))
+    dirgrid2 = np.empty((nd, nd, 2, 2))
+    signgrid1 = np.empty((nd, nd, 2, 2))
+    signgrid2 = np.empty((nd, nd, 2, 2))
+    wgrid1 = np.empty((nd, nd, 2, 2))
+    wgrid2 = np.empty((nd, nd, 2, 2))
 
     for i in range(nd):
         for j in range(nd):
@@ -83,13 +85,15 @@ def _skewness_from_spectrum(
 
     _skewness = 0.0
     for _freq1 in range(0, nf):
+        wgrid1[:, :, :, :] = signgrid1 * angular_frequency[_freq1]
         for _freq2 in range(0, nf):
+            wgrid2[:, :, :, :] = signgrid2 * angular_frequency[_freq2]
             _interaction_coefficient[:, :, :, :] = interaction_coefficient_function(
-                angular_frequency[_freq1],
+                wgrid1,
                 wavenumber[_freq1],
                 dirgrid1,
                 signgrid1,
-                angular_frequency[_freq2],
+                wgrid2,
                 wavenumber[_freq2],
                 dirgrid2,
                 signgrid2,
@@ -129,7 +133,8 @@ def _skewness_from_spectrum(
     return 3 * _skewness
 
 
-@jit(**numba_default)
+#
+@jit(**numba_default_parallel)
 def _skewness_from_spectra(
     frequency,
     direction,
@@ -137,6 +142,7 @@ def _skewness_from_spectra(
     interaction_coefficient_function,
     depth,
     grav,
+    progress_bar=None,
 ):
     dims = variance_density.shape
 
@@ -148,8 +154,10 @@ def _skewness_from_spectra(
         depth = np.full(nspec, depth[0])
 
     skewness = np.zeros(nspec)
-    for i in range(nspec):
-        print(i, nspec, "ja")
+    for i in prange(nspec):
+        if progress_bar is not None:
+            progress_bar.update(1)
+
         skewness[i] = _skewness_from_spectrum(
             frequency,
             direction,
@@ -169,6 +177,7 @@ def surface_elevation_skewness(
     variance_density,
     depth: Union[float, np.ndarray] = np.inf,
     physics_options: PhysicsOptions = None,
+    progress_bar=None,
 ):
     """
     Calculate the skewness of the wave field from the energy spectrum according to stokes perturbation theory.
@@ -187,4 +196,5 @@ def surface_elevation_skewness(
         _second_order_surface_elevation,
         depth,
         physics_options.grav,
+        progress_bar,
     )

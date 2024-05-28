@@ -150,14 +150,34 @@ def _second_order_surface_elevation(
         k_mag1 * k_mag2 * np.cos(k_dir1 - k_dir2) * sign_index1 * sign_index2
     )
 
-    coef_second_order_potential = _second_order_potential(
-        w1, k_mag1, k_dir1, sign_index1, w2, k_mag2, k_dir2, sign_index2, depth, grav
+    wsum = w1 + w2
+    ksum = np.sqrt(
+        (k_mag1 * np.cos(k_dir1) * sign_index1 + k_mag2 * np.cos(k_dir2) * sign_index2)
+        ** 2
+        + (
+            k_mag1 * np.sin(k_dir1) * sign_index1
+            + k_mag2 * np.sin(k_dir2) * sign_index2
+        )
+        ** 2
     )
-    return (
-        -(w1 + w2) / grav * coef_second_order_potential
-        + (w1 * w2 + w1**2 + w2**2) / (2 * grav)
-        - grav * inner_product / w1 / w2 / 2
+
+    if np.isinf(depth):
+        # Note if depth is infinite and ksum == 0, then the tanh in undefined.
+        w12 = np.sqrt(grav * ksum)
+    else:
+        w12 = np.sqrt(grav * ksum * np.tanh(ksum * depth))
+
+    if w12 == wsum:
+        resonance_factor = 0.0
+    else:
+        resonance_factor = wsum / (w12**2 - wsum**2)
+
+    term1 = -grav * (wsum * resonance_factor + 0.5) * inner_product / w1 / w2
+    term2 = (1 + wsum * resonance_factor) * (w1 * w2 + w1**2 + w2**2) / (2 * grav)
+    term3 = (
+        -grav * resonance_factor * (k_mag1**2 * w2 + k_mag2**2 * w1) / (2 * w1 * w2)
     )
+    return term1 + term2 + term3
 
 
 @vectorize(_interaction_signatures, **numba_default_vectorize)
