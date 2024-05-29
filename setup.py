@@ -10,6 +10,7 @@ setuptools.setup(
     license="Apache 2 License",
     install_requires=[
         "numpy",
+        "numba_progress",
         "numba",
         "pdoc",
     ],

@@ -8,6 +8,7 @@ from typing import Union
 from numba import jit, prange
 from linearwavetheory._numba_settings import numba_default, numba_default_parallel
 import numpy as np
+from numba_progress import ProgressBar
 
 
 @jit(**numba_default)
@@ -60,59 +61,43 @@ def _skewness_from_spectrum(
     frequency_bin = _frequency_bin(frequency)
     direction_bin = _direction_bin(direction, wrap=360)
 
-    dirgrid1 = np.empty((nd, nd, 2, 2))
-    dirgrid2 = np.empty((nd, nd, 2, 2))
-    signgrid1 = np.empty((nd, nd, 2, 2))
-    signgrid2 = np.empty((nd, nd, 2, 2))
-    wgrid1 = np.empty((nd, nd, 2, 2))
-    wgrid2 = np.empty((nd, nd, 2, 2))
+    _cos = np.cos(radian_direction)
+    _sin = np.sin(radian_direction)
 
-    for i in range(nd):
-        for j in range(nd):
-            dirgrid1[i, j, :, :] = radian_direction[i]
-            dirgrid2[i, j, :, :] = radian_direction[j]
-            signgrid1[i, j, 0, 0] = -1
-            signgrid1[i, j, 0, 1] = 1
-            signgrid1[i, j, 1, 0] = -1
-            signgrid1[i, j, 1, 1] = 1
-            signgrid2[i, j, 0, 0] = -1
-            signgrid2[i, j, 0, 1] = -1
-            signgrid2[i, j, 1, 0] = 1
-            signgrid2[i, j, 1, 1] = 1
-
-    # dirgrid1,dirgrid2,signgrid1,signgrid2 = np.meshgrid(radian_direction, radian_direction)
-    _interaction_coefficient = np.zeros((nd, nd, 2, 2), dtype=np.float64)
-
-    _skewness = 0.0
+    _skewness = 0.00
     for _freq1 in range(0, nf):
-        wgrid1[:, :, :, :] = signgrid1 * angular_frequency[_freq1]
+        w1 = angular_frequency[_freq1]
+        k1 = wavenumber[_freq1]
         for _freq2 in range(0, nf):
-            wgrid2[:, :, :, :] = signgrid2 * angular_frequency[_freq2]
-            _interaction_coefficient[:, :, :, :] = interaction_coefficient_function(
-                wgrid1,
-                wavenumber[_freq1],
-                dirgrid1,
-                signgrid1,
-                wgrid2,
-                wavenumber[_freq2],
-                dirgrid2,
-                signgrid2,
-                depth,
-                grav,
-            )
-            if _freq1 == _freq2:
-                for _dir in range(0, nd):
-                    _interaction_coefficient[_dir, _dir, 0, 1] = 0
-                    _interaction_coefficient[_dir, _dir, 1, 0] = 0
+            w2 = angular_frequency[_freq2]
+            k2 = wavenumber[_freq2]
 
             for _dir1 in range(0, nd):
+                kx1 = k1 * _cos[_dir1]
+                ky1 = k1 * _sin[_dir1]
                 for _dir2 in range(0, nd):
-                    interaction_coefficient = (
-                        _interaction_coefficient[_dir1, _dir2, 0, 0]
-                        + _interaction_coefficient[_dir1, _dir2, 0, 1]
-                        + _interaction_coefficient[_dir1, _dir2, 1, 0]
-                        + _interaction_coefficient[_dir1, _dir2, 1, 1]
-                    )
+                    kx2 = k2 * np.cos(radian_direction[_dir2])
+                    ky2 = k2 * np.sin(radian_direction[_dir2])
+
+                    interaction_coefficient = 0.0
+                    for isign1 in [-1, 1]:
+                        for isign2 in [-1, 1]:
+                            if isign1 * isign2 == -1:
+                                if _freq1 == _freq2:
+                                    continue
+
+                            interaction_coefficient += interaction_coefficient_function(
+                                isign1 * w1,
+                                k1,
+                                isign1 * kx1,
+                                isign1 * ky1,
+                                isign2 * w2,
+                                k2,
+                                isign2 * kx2,
+                                isign2 * ky2,
+                                depth,
+                                grav,
+                            )
 
                     hyper_volume = (
                         frequency_bin[_freq1]
@@ -129,6 +114,120 @@ def _skewness_from_spectrum(
                     _skewness += (
                         interacting_wave_energy * interaction_coefficient * hyper_volume
                     )
+
+    return 3 * _skewness
+
+
+@jit(**numba_default)
+def surface_elevation_skewness_from_spectrum(
+    frequency,
+    direction,
+    variance_density,
+    depth,
+    grav,
+):
+    """
+    Calculate the skewness of the wave field from the energy spectrum according to stokes perturbation theory.
+
+    :param frequency: frequency in Hz
+    :param direction: direction in degrees
+    :param energy: energy spectrum in m^2/Hz/degree
+    :return: skewness
+    """
+    nf = len(frequency)
+    nd = len(direction)
+
+    radian_direction = np.deg2rad(direction)
+    wavenumber = inverse_intrinsic_dispersion_relation(2 * np.pi * frequency, depth)
+    angular_frequency = 2 * np.pi * frequency
+
+    frequency_bin = _frequency_bin(frequency)
+    direction_bin = _direction_bin(direction, wrap=360)
+
+    _cos = np.cos(radian_direction)
+    _sin = np.sin(radian_direction)
+
+    kx = np.empty((nf, nd))
+    ky = np.empty((nf, nd))
+
+    for i in range(nf):
+        for j in range(nd):
+            kx[i, j] = _cos[j] * wavenumber[i]
+            ky[i, j] = _sin[j] * wavenumber[i]
+
+    if np.isinf(depth):
+        depth = 1e10
+
+    _skewness = 0.0
+    # Sum interactions
+    for isign in [-1, 1]:
+        if isign == -1:
+            jstart = 1
+        else:
+            jstart = 0
+
+        for _freq1 in range(0, nf):
+            w1 = angular_frequency[_freq1]
+            k1 = wavenumber[_freq1]
+            if w1 == 0.0:
+                continue
+
+            for _freq2 in range(_freq1 + jstart, nf):
+                k2 = wavenumber[_freq2]
+                w2 = isign * angular_frequency[_freq2]
+                if w2 == 0.0:
+                    continue
+
+                fac = 2.0
+                if isign == -1 and _freq1 == _freq2:
+                    continue
+
+                if _freq1 == _freq2:
+                    fac = 1.0
+
+                wsum = w1 + w2
+                #
+                fac1 = -grav / w1 / w2 * fac
+                fac2 = (w1 * w2 + w1**2 + w2**2) / (2 * grav) * fac
+                fac3 = -grav * (k1**2 * w2 + k2**2 * w1) / (2 * w1 * w2) * fac
+
+                for _dir1 in range(0, nd):
+                    kx1 = kx[_freq1, _dir1]
+                    ky1 = ky[_freq1, _dir1]
+                    for _dir2 in range(0, nd):
+                        kx2 = isign * kx[_freq2, _dir2]
+                        ky2 = isign * ky[_freq2, _dir2]
+
+                        inner_product = kx1 * kx2 + ky1 * ky2
+                        ksum = np.sqrt((kx1 + kx2) ** 2 + (ky1 + ky2) ** 2)
+
+                        w12_squared = grav * ksum * np.tanh(ksum * depth)
+                        resonance_factor = wsum / (w12_squared - wsum**2)
+
+                        _interaction_coefficient = (
+                            fac1 * (wsum * resonance_factor + 0.5) * inner_product
+                            + fac2 * (1 + wsum * resonance_factor)
+                            + fac3 * resonance_factor
+                        )
+
+                        hyper_volume = (
+                            frequency_bin[_freq1]
+                            * frequency_bin[_freq2]
+                            * direction_bin[_dir1]
+                            * direction_bin[_dir2]
+                        )
+                        # Divide by four to switch from a one-sided spectrum to a two-sided spectrum
+                        # but multiply by two as we have ++ and -- interactions which contribute equally
+                        interacting_wave_energy = (
+                            variance_density[_freq1, _dir1]
+                            * variance_density[_freq2, _dir2]
+                        ) / 2.0
+
+                        _skewness += (
+                            interacting_wave_energy
+                            * _interaction_coefficient
+                            * hyper_volume
+                        )
 
     return 3 * _skewness
 
@@ -170,31 +269,137 @@ def _skewness_from_spectra(
     return skewness.reshape(dims[:-2])
 
 
-@jit(**numba_default)
-def surface_elevation_skewness(
+@jit(**numba_default_parallel)
+def _surface_elevation_skewness_from_spectra(
     frequency,
     direction,
     variance_density,
-    depth: Union[float, np.ndarray] = np.inf,
-    physics_options: PhysicsOptions = None,
+    depth,
+    grav,
     progress_bar=None,
 ):
+    dims = variance_density.shape
+
+    nspec = int(np.prod(np.array(dims[:-2])))
+    variance_density = np.reshape(variance_density, (nspec, dims[-2], dims[-1]))
+    depth = atleast_1d(depth)
+
+    if len(depth) == 1:
+        depth = np.full(nspec, depth[0])
+
+    skewness = np.zeros(nspec)
+    for i in prange(nspec):
+        if progress_bar is not None:
+            progress_bar.update(1)
+
+        skewness[i] = surface_elevation_skewness_from_spectrum(
+            frequency,
+            direction,
+            variance_density[i, :, :],
+            depth[i],
+            grav,
+        )
+
+    return skewness.reshape(dims[:-2])
+
+
+@jit(**numba_default)
+def _reference_surface_skewness_calculation(
+    frequency: np.ndarray,
+    direction: np.ndarray,
+    variance_density: np.ndarray,
+    depth: Union[float, np.ndarray] = np.inf,
+    physics_options: PhysicsOptions = None,
+):
     """
-    Calculate the skewness of the wave field from the energy spectrum according to stokes perturbation theory.
+    Calculate the skewness of the wave field for a general interaction coefficient
 
     :param frequency: frequency in Hz
     :param direction: direction in degrees
-    :param energy: energy spectrum in m^2/Hz/degree
-    :return: skewness
+    :param variance_density: energy spectrum in m^2/Hz/degree
+    :param depth: depth in meters
+    :param physics_options: physics options
+    :param progress_bar: progress bar (optional). Pass a numba progress bar to show progress.
+    :return: skewness as ndarray
     """
     _, physics_options = _parse_options(None, physics_options)
 
-    return _skewness_from_spectra(
+    skewness = _skewness_from_spectra(
         frequency,
         direction,
         variance_density,
         _second_order_surface_elevation,
         depth,
         physics_options.grav,
-        progress_bar,
+        None,
     )
+    return skewness
+
+
+def surface_elevation_skewness(
+    frequency: np.ndarray,
+    direction: np.ndarray,
+    variance_density: np.ndarray,
+    depth: Union[float, np.ndarray] = np.inf,
+    physics_options: PhysicsOptions = None,
+    display_progress_bar=True,
+):
+    """
+    Calculate the skewness of the wave field from the energy spectrum according to stokes perturbation theory. See e.g.
+    Herbers, T. H. C., & Janssen, T. T. (2016).
+
+    Ref:
+    Herbers, T. H. C., & Janssen, T. T. (2016). Lagrangian surface wave motion and Stokes drift fluctuations.
+    Journal of Physical Oceanography, 46(4), 1009-1021.
+
+    :param frequency: frequency in Hz
+    :param direction: direction in degrees
+    :param variance_density: energy spectrum in m^2/Hz/degree
+    :param depth: depth in meters
+    :param physics_options: physics options
+    :param progress_bar: progress bar (optional). Pass a numba progress bar to show progress.
+    :return: skewness as ndarray
+    """
+    _, physics_options = _parse_options(None, physics_options)
+
+    dims = variance_density.shape
+    ndim = variance_density.ndim
+
+    if ndim < 2:
+        raise ValueError("variance_density must have at least two dimensions")
+
+    if not (dims[-1] == len(direction)):
+        raise ValueError(
+            "variance_density must have the same number of directions as the "
+            "length of the direction array. The last dimension of variance_density is assumed to be "
+            "the direction dimension."
+        )
+
+    if not (dims[-2] == len(frequency)):
+        raise ValueError(
+            "variance_density must have the same number of frequencies as the "
+            "length of the direction array. The second to last dimension of variance_density is assumed to "
+            "be the direction dimension."
+        )
+
+    disable = not display_progress_bar
+    if ndim > 2:
+        number_of_spectra = np.prod(dims[:-2])
+        if number_of_spectra < 10:
+            disable = True
+    else:
+        number_of_spectra = 1
+        disable = True
+
+    with ProgressBar(
+        total=number_of_spectra, disable=disable, desc="Calculating skewness"
+    ) as progress_bar:
+        skewness = _surface_elevation_skewness_from_spectra(
+            frequency,
+            direction,
+            variance_density,
+            depth,
+            physics_options.grav,
+            progress_bar,
+        )
+    return skewness

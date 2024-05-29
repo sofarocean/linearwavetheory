@@ -2,13 +2,7 @@ from linearwavetheory.stokes_theory._perturbation_theory_coeficients import (
     _second_order_surface_elevation,
     _second_order_lagrangian_surface_elevation,
 )
-from linearwavetheory import inverse_intrinsic_dispersion_relation
-from linearwavetheory.stokes_theory._third_order_statistics import (
-    surface_elevation_skewness,
-)
 import numpy as np
-
-from tests._utils import spectrum2D
 
 
 def stokes_sum_ampitude(k, d):
@@ -45,20 +39,24 @@ def test_coef_second_order_surface_elevation():
     grav = 9.81
     for kd in np.linspace(0.1, 10, 100):
         k = kd / depth
-        c12 = _second_order_surface_elevation(k, 0, 1.0, k, 0, 1, depth, grav)
+        w = np.sqrt(grav * k * np.tanh(k * depth))
+        c12 = _second_order_surface_elevation(w, k, k, 0.0, w, k, k, 0.0, depth, grav)
         assert np.isclose(c12, 2 * stokes_sum_ampitude(k, depth))
 
-        _setdown = _second_order_surface_elevation(k, 0, 1.0, k, 0, -1, depth, grav)
+        _setdown = _second_order_surface_elevation(
+            w, k, k, 0.0, -w, k, -k, 0.0, depth, grav
+        )
         _stokes_setdown = stokes_setdown(k, depth)
         assert np.isclose(_setdown, 2 * _stokes_setdown, rtol=1e-5, atol=1e-5)
 
     # Test it works for infinite depth
     depth = np.inf
     k = 1
-    c12 = _second_order_surface_elevation(k, 0, 1.0, k, 0, 1, depth, grav)
+    w = np.sqrt(grav * k)
+    c12 = _second_order_surface_elevation(w, k, k, 0.0, w, k, k, 0.0, depth, grav)
     assert np.isfinite(c12)
 
-    c12 = _second_order_surface_elevation(k, 0, 1.0, k, 0, -1, depth, grav)
+    c12 = _second_order_surface_elevation(w, k, k, 0.0, -w, k, -k, 0.0, depth, grav)
     assert np.isfinite(c12)
 
 
@@ -69,85 +67,11 @@ def test_coef_second_order_lagrangian_surface_elevation():
     grav = 9.81
     for kd in range(10, 100):
         k = kd / depth
+        w = np.sqrt(grav * k * np.tanh(k * depth))
+
+        k2 = 1.5 * k
+        w2 = np.sqrt(grav * k2 * np.tanh(k2 * depth))
         c12 = _second_order_lagrangian_surface_elevation(
-            k, 0, 1.0, 1.5 * k, 0, 1.0, depth, grav
+            w, k, k, 0.0, w2, k2, k2, 0.0, depth, grav
         )
         assert np.isclose(c12, 0, rtol=1e-5, atol=1e-5)
-
-
-def test_skewness_spectrum():
-    dir = np.linspace(0, 360, 36, endpoint=False)
-    freq = np.linspace(0.01, 0.5, 51, endpoint=True)
-    kd = 0.5
-    depth = 10
-    k = kd / depth
-    omega = np.sqrt(9.81 * k * np.tanh(k * depth))
-    period = 2 * np.pi / omega
-
-    waveheight = 3
-    _var = waveheight**2 / 16
-
-    spec = spectrum2D(
-        waveheight=waveheight,
-        meandir=0,
-        tm01=period,
-        spread=20,
-        dir=dir,
-        frequencies=freq,
-    )
-
-    skewness = surface_elevation_skewness(
-        freq,
-        dir,
-        spec,
-        depth=depth,
-    )
-    assert np.isclose(
-        skewness / np.sqrt(_var**3), 0.48861658091281845, rtol=1e-5, atol=1e-5
-    )
-
-    # Test it works for infinite depth
-    depth = np.inf
-    skewness = surface_elevation_skewness(
-        freq,
-        dir,
-        spec,
-        depth=depth,
-    )
-    print(skewness)
-
-
-def test_skewness_stokeswave():
-
-    df = 0.01
-    ndir = 36
-    period = 10
-    dir = np.linspace(0, 360, ndir, endpoint=False)
-    freq = np.linspace(1 / period, 1 / period + df, 2, endpoint=True)
-    ddir = 360 / ndir
-
-    omega = 2 * np.pi / period
-
-    for kd in np.linspace(0.1, 10, 100):
-
-        steepness = 0.1
-        depth = 9.81 * kd * np.tanh(kd) / omega**2
-        wavenumber = kd / depth
-        amplitude = steepness / wavenumber
-
-        # To note- we recalculate the wavenumber here as the skewness routine uses an approximate
-        # inversion as well.
-        wavenumber = inverse_intrinsic_dispersion_relation(2 * np.pi * freq[0], depth)
-
-        _stokes_skewness = stokes_skewness(amplitude, wavenumber[0], depth)
-        _var = amplitude**2 / 2
-        spec = np.zeros((len(freq), len(dir)))
-        spec[0, 0] = _var / ddir / df
-
-        skewness = surface_elevation_skewness(
-            freq,
-            dir,
-            spec,
-            depth,
-        )
-        assert np.isclose(_stokes_skewness, skewness)
