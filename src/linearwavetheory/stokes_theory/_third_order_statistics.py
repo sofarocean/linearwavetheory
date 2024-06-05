@@ -82,8 +82,8 @@ def _skewness_from_spectrum(
                     interaction_coefficient = 0.0
                     for isign1 in [-1, 1]:
                         for isign2 in [-1, 1]:
-                            if isign1 * isign2 == -1:
-                                if _freq1 == _freq2:
+                            if _freq1 == _freq2:
+                                if isign1 * isign2 == -1:
                                     continue
 
                             interaction_coefficient += interaction_coefficient_function(
@@ -115,7 +115,7 @@ def _skewness_from_spectrum(
                         interacting_wave_energy * interaction_coefficient * hyper_volume
                     )
 
-    return 3 * _skewness
+    return 6 * _skewness
 
 
 @jit(**numba_default)
@@ -144,59 +144,78 @@ def surface_elevation_skewness_from_spectrum(
     frequency_bin = _frequency_bin(frequency)
     direction_bin = _direction_bin(direction, wrap=360)
 
-    _cos = np.cos(radian_direction)
-    _sin = np.sin(radian_direction)
-
+    # pre-calculate wavenumber components
     kx = np.empty((nf, nd))
     ky = np.empty((nf, nd))
-
     for i in range(nf):
         for j in range(nd):
-            kx[i, j] = _cos[j] * wavenumber[i]
-            ky[i, j] = _sin[j] * wavenumber[i]
+            kx[i, j] = np.cos(radian_direction[j]) * wavenumber[i]
+            ky[i, j] = np.sin(radian_direction[j]) * wavenumber[i]
 
+    # Set depth to a large number if it is infinite. There is a chance that the tanh function for tanh( ksum * depth)
+    # is undifined below for ksum = 0. Instead of introducing an if statement in the loop, we set the depth to a large
+    # number. This is a valid approximation as the tanh function will approach 1 for large values of the argument.
     if np.isinf(depth):
         depth = 1e10
 
     _skewness = 0.0
     # Sum interactions
-    for isign in [-1, 1]:
-        if isign == -1:
+    for sign_index in [-1, 1]:
+        if sign_index == -1:
             jstart = 1
         else:
             jstart = 0
 
-        for _freq1 in range(0, nf):
-            w1 = angular_frequency[_freq1]
-            k1 = wavenumber[_freq1]
+        for frequency_index_component1 in range(0, nf):
+            w1 = angular_frequency[frequency_index_component1]
+            k1 = wavenumber[frequency_index_component1]
             if w1 == 0.0:
+                # Skip zero frequency as it introduces singularities. We assume a zero mean process.
                 continue
 
-            for _freq2 in range(_freq1 + jstart, nf):
-                k2 = wavenumber[_freq2]
-                w2 = isign * angular_frequency[_freq2]
+            for frequency_index_component2 in range(
+                frequency_index_component1 + jstart, nf
+            ):
+                k2 = wavenumber[frequency_index_component2]
+                w2 = sign_index * angular_frequency[frequency_index_component2]
                 if w2 == 0.0:
+                    # Skip zero frequency as it introduces singularities. We assume a zero mean process.
                     continue
 
+                if (
+                    sign_index == -1
+                    and frequency_index_component1 == frequency_index_component2
+                ):
+                    # Skip the zero mean interactions. We assume that the signal we are comparing to has zero-mean and
+                    # exclude the mean set-down interactions.
+                    continue
+
+                # Because we only sum over the upper triangle of the interaction matrix for efficiency, we need to
+                # multiply by two to get the full sum -- except if we are summing over the diagonal.
                 fac = 2.0
-                if isign == -1 and _freq1 == _freq2:
-                    continue
-
-                if _freq1 == _freq2:
+                if frequency_index_component1 == frequency_index_component2:
                     fac = 1.0
 
                 wsum = w1 + w2
                 #
+                # Pull these factors of the interaction coeficient outside the direction loops since they are
+                # independent of the direction.
                 fac1 = -grav / w1 / w2 * fac
                 fac2 = (w1 * w2 + w1**2 + w2**2) / (2 * grav) * fac
                 fac3 = -grav * (k1**2 * w2 + k2**2 * w1) / (2 * w1 * w2) * fac
 
-                for _dir1 in range(0, nd):
-                    kx1 = kx[_freq1, _dir1]
-                    ky1 = ky[_freq1, _dir1]
-                    for _dir2 in range(0, nd):
-                        kx2 = isign * kx[_freq2, _dir2]
-                        ky2 = isign * ky[_freq2, _dir2]
+                for direction_index_component1 in range(0, nd):
+                    kx1 = kx[frequency_index_component1, direction_index_component1]
+                    ky1 = ky[frequency_index_component1, direction_index_component1]
+                    for direction_index_component2 in range(0, nd):
+                        kx2 = (
+                            sign_index
+                            * kx[frequency_index_component2, direction_index_component2]
+                        )
+                        ky2 = (
+                            sign_index
+                            * ky[frequency_index_component2, direction_index_component2]
+                        )
 
                         inner_product = kx1 * kx2 + ky1 * ky2
                         ksum = np.sqrt((kx1 + kx2) ** 2 + (ky1 + ky2) ** 2)
@@ -204,32 +223,36 @@ def surface_elevation_skewness_from_spectrum(
                         w12_squared = grav * ksum * np.tanh(ksum * depth)
                         resonance_factor = wsum / (w12_squared - wsum**2)
 
-                        _interaction_coefficient = (
+                        interaction_coefficient = (
                             fac1 * (wsum * resonance_factor + 0.5) * inner_product
                             + fac2 * (1 + wsum * resonance_factor)
                             + fac3 * resonance_factor
                         )
 
                         hyper_volume = (
-                            frequency_bin[_freq1]
-                            * frequency_bin[_freq2]
-                            * direction_bin[_dir1]
-                            * direction_bin[_dir2]
+                            frequency_bin[frequency_index_component1]
+                            * frequency_bin[frequency_index_component2]
+                            * direction_bin[direction_index_component1]
+                            * direction_bin[direction_index_component2]
                         )
                         # Divide by four to switch from a one-sided spectrum to a two-sided spectrum
                         # but multiply by two as we have ++ and -- interactions which contribute equally
                         interacting_wave_energy = (
-                            variance_density[_freq1, _dir1]
-                            * variance_density[_freq2, _dir2]
+                            variance_density[
+                                frequency_index_component1, direction_index_component1
+                            ]
+                            * variance_density[
+                                frequency_index_component2, direction_index_component2
+                            ]
                         ) / 2.0
 
                         _skewness += (
                             interacting_wave_energy
-                            * _interaction_coefficient
+                            * interaction_coefficient
                             * hyper_volume
                         )
 
-    return 3 * _skewness
+    return 6 * _skewness
 
 
 #
