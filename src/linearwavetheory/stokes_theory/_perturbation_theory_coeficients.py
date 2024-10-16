@@ -133,6 +133,14 @@ def _second_order_surface_elevation(w1, k1, kx1, ky1, w2, k2, kx2, ky2, depth, g
 
     inner_product = kx1 * kx2 + ky1 * ky2
 
+    if np.isinf(depth):
+        freq_scale = 0.0
+    else:
+        freq_scale = np.pi * np.sqrt(grav / depth)
+
+    if np.abs(w1) <= freq_scale / 100 or np.abs(w2) <= freq_scale / 100:
+        return 0.0
+
     wsum = w1 + w2
     ksum = np.sqrt((kx1 + kx2) ** 2 + (ky1 + ky2) ** 2)
     if ksum == 0:
@@ -148,6 +156,7 @@ def _second_order_surface_elevation(w1, k1, kx1, ky1, w2, k2, kx2, ky2, depth, g
     term1 = -grav * (wsum * resonance_factor + 0.5) * inner_product / w1 / w2
     term2 = (1 + wsum * resonance_factor) * (w1 * w2 + w1**2 + w2**2) / (2 * grav)
     term3 = -grav * resonance_factor * (k1**2 * w2 + k2**2 * w1) / (2 * w1 * w2)
+
     return term1 + term2 + term3
 
 
@@ -176,10 +185,17 @@ def _second_order_lagrangian_surface_elevation(
     """
     inner_product = kx1 * kx2 + ky1 * ky2
 
-    coef_second_order_eulerian_surface_elevation = _second_order_surface_elevation(
-        w1, k1, kx1, kx2, w2, k2, kx2, ky2, depth, grav
-    )
+    if np.isinf(depth):
+        freq_scale = 0.0
+    else:
+        freq_scale = np.pi * np.sqrt(grav / depth)
 
+    if np.abs(w1) <= freq_scale / 100 or np.abs(w2) <= freq_scale / 100:
+        return 0.0
+
+    coef_second_order_eulerian_surface_elevation = _second_order_surface_elevation(
+        w1, k1, kx1, ky1, w2, k2, kx2, ky2, depth, grav
+    )
     return (
         coef_second_order_eulerian_surface_elevation
         - grav * inner_product / w1**2 / w2**2 / 2 * (w1**2 + w2**2)

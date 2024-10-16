@@ -1,3 +1,4 @@
+from linearwavetheory._utils import _direction_bin, _frequency_bin
 from linearwavetheory.stokes_theory._perturbation_theory_coeficients import (
     _second_order_surface_elevation,
 )
@@ -9,29 +10,6 @@ from numba import jit, prange
 from linearwavetheory._numba_settings import numba_default, numba_default_parallel
 import numpy as np
 from numba_progress import ProgressBar
-
-
-@jit(**numba_default)
-def _direction_bin(direction, wrap=2 * np.pi):
-    _tmp = np.zeros(len(direction) + 2)
-    _tmp[0] = direction[-1]
-    _tmp[1:-1] = direction
-    _tmp[-1] = direction[0]
-    _angle_diff = (np.diff(_tmp) + wrap / 2) % wrap - wrap / 2
-    return (_angle_diff[:-1] + _angle_diff[1:]) / 2
-
-
-@jit(**numba_default)
-def _frequency_bin(frequency):
-    _tmp = np.zeros(len(frequency) + 2)
-    _tmp[0] = frequency[0] - (frequency[1] - frequency[0])
-    if _tmp[0] < 0:
-        _tmp[0] = 0
-
-    _tmp[1:-1] = frequency
-    _tmp[-1] = frequency[-1] + (frequency[-1] - frequency[-2])
-    _freq_diff = np.diff(_tmp)
-    return (_freq_diff[:-1] + _freq_diff[1:]) / 2
 
 
 @jit(**numba_default)
