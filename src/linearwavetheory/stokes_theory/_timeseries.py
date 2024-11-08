@@ -1,4 +1,4 @@
-from ._perturbation_theory_coeficients import _second_order_surface_elevation
+from ._second_order_coeficients import _second_order_surface_elevation
 from linearwavetheory import inverse_intrinsic_dispersion_relation
 from linearwavetheory.settings import _parse_options
 import numpy as np

@@ -6,6 +6,7 @@ from linearwavetheory.stokes_theory._third_order_statistics import (
 import numpy as np
 from linearwavetheory.stokes_theory._timeseries import surface_time_series
 from tests._utils import spectrum2D
+from linearwavetheory.settings import _GRAV
 
 
 def stokes_sum_ampitude(k, d):
@@ -46,7 +47,7 @@ def test_skewness_spectrum():
     kd = 0.5
     depth = 10
     k = kd / depth
-    omega = np.sqrt(9.81 * k * np.tanh(k * depth))
+    omega = np.sqrt(_GRAV * k * np.tanh(k * depth))
     period = 2 * np.pi / omega
 
     waveheight = 3
@@ -69,8 +70,8 @@ def test_skewness_spectrum():
     )
 
     assert np.isclose(
-        skewness / np.sqrt(_var**3), 0.98467, rtol=1e-5, atol=1e-5
-    ), f"Skewness is {skewness/ np.sqrt(_var**3)} and target {0.98467}"
+        skewness / np.sqrt(_var**3), 0.987365, rtol=1e-5, atol=1e-5
+    ), f"Skewness is {skewness/ np.sqrt(_var**3)} and target {0.987365}"
 
     # Test it works for infinite depth
     depth = np.inf
@@ -94,7 +95,7 @@ def test_implementation_consistency():
     for kd in kds:
 
         k = kd / depth
-        omega = np.sqrt(9.81 * k * np.tanh(k * depth))
+        omega = np.sqrt(_GRAV * k * np.tanh(k * depth))
         period = 2 * np.pi / omega
 
         waveheight = 3
@@ -131,7 +132,7 @@ def test_skewness_stokeswave():
     for kd in np.linspace(0.1, 10, 100):
 
         steepness = 0.1
-        depth = 9.81 * kd * np.tanh(kd) / omega**2
+        depth = _GRAV * kd * np.tanh(kd) / omega**2
         wavenumber = kd / depth
         amplitude = steepness / wavenumber
 
@@ -218,7 +219,7 @@ def test_skewness_bichromatic():
     omega = 2 * np.pi / period
     for kd in np.linspace(0.1, 10, 100):
 
-        depth = 9.81 * kd * np.tanh(kd) / omega**2
+        depth = _GRAV * kd * np.tanh(kd) / omega**2
         wavenumber = kd / depth
         amplitude = steepness / wavenumber
 

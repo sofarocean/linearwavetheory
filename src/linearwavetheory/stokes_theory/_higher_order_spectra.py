@@ -1,4 +1,9 @@
-from ._perturbation_theory_coeficients import (
+from ._third_order_coeficients import (
+    _third_order_coef_stokes_amplitude_symmetric,
+    _third_order_coef_dispersion_symmetric,
+    _third_order_coef_stokes_amplitude_lagrangian_symmetric,
+)
+from ._second_order_coeficients import (
     _second_order_surface_elevation,
     _second_order_lagrangian_surface_elevation,
 )
@@ -8,17 +13,24 @@ from linearwavetheory._numba_settings import numba_default, numba_default_parall
 from numba import jit, prange
 from linearwavetheory._array_shape_preprocessing import atleast_1d
 from linearwavetheory._utils import _direction_bin
+from typing import Union
+from ..settings import PhysicsOptions, _parse_options, _GRAV
 
 
-@jit(**numba_default_parallel)
+@jit(**numba_default)
 def bound_wave_spectra_1d(
     intrinsic_frequency_hz: np.ndarray,
     angle_degrees: np.ndarray,
     variance_density: np.ndarray,
-    depth: float = np.inf,
+    depth: Union[float, np.ndarray] = np.inf,
     kind: str = "eulerian",
     contributions: str = "all",
-    grav=9.81,
+    include_nonlinear=True,
+    include_quasilinear=True,
+    include_stokes_frequency_correction=True,
+    include_mean_flow=False,
+    include_mean_setdown=False,
+    physics_options: PhysicsOptions = None,
     progress_bar=None,
 ):
     """
@@ -34,6 +46,7 @@ def bound_wave_spectra_1d(
     """
     dims = variance_density.shape
 
+    numerical_option, physics_options = _parse_options(None, physics_options)
     nspec = int(np.prod(np.array(dims[:-2])))
     nfreq = len(intrinsic_frequency_hz)
     variance_density = np.reshape(variance_density, (nspec, dims[-2], dims[-1]))
@@ -56,7 +69,12 @@ def bound_wave_spectra_1d(
             depth=depth[i],
             kind=kind,
             contributions=contributions,
-            grav=grav,
+            include_nonlinear=include_nonlinear,
+            include_quasilinear=include_quasilinear,
+            include_mean_flow=include_mean_flow,
+            include_mean_setdown=include_mean_setdown,
+            grav=physics_options.grav,
+            include_stokes_frequency_correction=include_stokes_frequency_correction,
         )
 
     return output.reshape(dims[:-1])
@@ -70,7 +88,12 @@ def bound_wave_spectrum_1d(
     depth: float = np.inf,
     kind: str = "eulerian",
     contributions: str = "all",
-    grav=9.81,
+    include_nonlinear=True,
+    include_quasilinear=True,
+    include_mean_flow=False,
+    include_mean_setdown=False,
+    grav=_GRAV,
+    include_stokes_frequency_correction=False,
 ):
     """
     Calculate the bound wave spectrum for a given variance density.
@@ -98,19 +121,39 @@ def bound_wave_spectrum_1d(
         raise Exception(
             f"Unknown contributions {contributions}, must be one of 'all', 'sum', 'difference'"
         )
+    for i in range(number_of_frequencties):
+        bound_wave_spectrum[i] = estimate_bound_contribution_1d(
+            intrinsic_frequency_hz[i],
+            intrinsic_frequency_hz,
+            angle_degrees,
+            variance_density,
+            sign_indices,
+            depth,
+            include_nonlinear,
+            include_quasilinear,
+            include_mean_flow,
+            include_mean_setdown,
+            kind,
+            grav,
+        )
 
-    for sign_index in sign_indices:
+    if include_stokes_frequency_correction:
+        stokes_correction = stokes_dispersive_correction(
+            intrinsic_frequency_hz,
+            angle_degrees,
+            variance_density,
+            depth=depth,
+            kind=kind,
+            grav=grav,
+            include_mean_setdown=include_mean_setdown,
+            include_mean_flow=include_mean_flow,
+        )
+        number_of_directions = len(angle_degrees)
+        direction_bin = _direction_bin(angle_degrees, wrap=360)
         for i in range(number_of_frequencties):
-            bound_wave_spectrum[i] += estimate_bound_contribution_1d(
-                intrinsic_frequency_hz[i],
-                intrinsic_frequency_hz,
-                angle_degrees,
-                variance_density,
-                sign_index,
-                depth=depth,
-                kind=kind,
-                grav=grav,
-            )
+            for j in range(number_of_directions):
+                bound_wave_spectrum[i] += stokes_correction[i, j] * direction_bin[j]
+
     return bound_wave_spectrum
 
 
@@ -120,12 +163,298 @@ def estimate_bound_contribution_1d(
     frequency_hz_coordinates,
     angles_degrees_coordinates,
     variance_density,
+    sign_indices,
+    depth,
+    include_nonlinear,
+    include_quasilinear,
+    include_mean_flow,
+    include_mean_setdown,
+    kind,
+    grav,
+) -> float:
+    nonlinear = 0.0
+    if include_nonlinear:
+        for sign_index in sign_indices:
+            nonlinear += estimate_bound_contribution_nonlinear_1d(
+                frequency_target,
+                frequency_hz_coordinates,
+                angles_degrees_coordinates,
+                variance_density,
+                sign_index,
+                depth=depth,
+                kind=kind,
+                grav=grav,
+            )
+    quasilinear = 0.0
+    if include_quasilinear:
+        quasilinear += estimate_bound_contribution_quasilinear_1d(
+            frequency_target,
+            frequency_hz_coordinates,
+            angles_degrees_coordinates,
+            variance_density,
+            depth=depth,
+            kind=kind,
+            grav=grav,
+            include_mean_flow=include_mean_flow,
+            include_mean_setdown=include_mean_setdown,
+        )
+    return nonlinear + quasilinear
+
+
+@jit(**numba_default)
+def estimate_bound_contribution_quasilinear_1d(
+    frequency_target,
+    frequency_hz_coordinates,
+    angles_degrees_coordinates,
+    variance_density,
+    depth=np.inf,
+    kind="eulerian",
+    grav=_GRAV,
+    include_mean_flow=False,
+    include_mean_setdown=False,
+) -> float:
+    # Preliminaries
+    # ----------------
+    # Calculate the integration frequencies. Note that depending on if we are calculating the sum or difference
+    # interactions the frequency range is different.
+
+    # Component 1
+    # ----------------
+    angular_freq = frequency_hz_coordinates * 2.0 * np.pi
+    wavenumbers = inverse_intrinsic_dispersion_relation(angular_freq, depth)
+
+    # precalculate the trigonometric functions
+    angles_rad_coordinates = np.deg2rad(angles_degrees_coordinates)
+    _cos = np.cos(angles_rad_coordinates)
+    _sin = np.sin(angles_rad_coordinates)
+
+    # Set up the integration
+    # ----------------
+    # Get angle stepsizes for integration. We use the midpoint rule for the angles.
+    delta_angle = _direction_bin(angles_degrees_coordinates, wrap=360)
+    sum = 0.0
+
+    # Integrate
+    # ----------------
+    nfreq = len(frequency_hz_coordinates)
+    nangle = len(angles_degrees_coordinates)
+
+    ifreq0 = np.searchsorted(frequency_hz_coordinates, frequency_target)
+
+    # Compoment 1 wavenumber, components and angular frequency
+    w1 = angular_freq[ifreq0]
+    k1 = wavenumbers[ifreq0]
+
+    for ifreq in range(nfreq):
+        # Use trapezoindal rule to integrate over the frequency. This expression reduces to 0.5*df at endpoints and
+        # df inbetween.
+        iu = min(ifreq + 1, nfreq - 1)
+        il = max(ifreq - 1, 0)
+        delta_freq = (frequency_hz_coordinates[iu] - frequency_hz_coordinates[il]) / 2.0
+        kx1 = k1 * _cos
+        ky1 = k1 * _sin
+
+        # Compoment 2 wavenumber, components and angular frequency. The sign index is used to determine if we are
+        # calculating the sum (sign_index=1) or difference (sign_index=-1) interactions.
+        k2 = wavenumbers[ifreq]
+        w2 = angular_freq[ifreq]
+        kx2 = k2 * _cos
+        ky2 = k2 * _sin
+
+        e1 = variance_density[ifreq0, :]
+        for iangle in range(nangle):
+            e2 = variance_density[ifreq, iangle]
+
+            # Calculate the interaction coefficients. Use interaction coefficient appropriate for Eulerian or Lagrangian
+            # observations.
+            if kind == "eulerian":
+                interaction_coef = _third_order_coef_stokes_amplitude_symmetric(
+                    w1,
+                    k1,
+                    kx1[iangle],
+                    ky1[iangle],
+                    w2,
+                    k2,
+                    kx2,
+                    ky2,
+                    depth,
+                    grav,
+                    include_mean_flow,
+                    include_mean_setdown,
+                )
+            elif kind == "lagrangian":
+                interaction_coef = (
+                    _third_order_coef_stokes_amplitude_lagrangian_symmetric(
+                        w1,
+                        k1,
+                        kx1[iangle],
+                        ky1[iangle],
+                        w2,
+                        k2,
+                        kx2,
+                        ky2,
+                        depth,
+                        grav,
+                        include_mean_flow,
+                        include_mean_setdown,
+                    )
+                )
+            else:
+                raise Exception("Unknown kind must be one of 'eulerian', 'lagrangian'")
+
+            sum += 2 * (
+                np.sum(e1 * e2 * interaction_coef * delta_angle)
+                * delta_freq
+                * delta_angle[iangle]
+            )
+
+    return sum
+
+
+@jit(**numba_default)
+def estimate_nonlinear_dispersion(
+    frequency_hz_coordinates,
+    angles_degrees_coordinates,
+    variance_density,
+    depth=np.inf,
+    kind="eulerian",
+    grav=_GRAV,
+    include_mean_setdown=False,
+    include_mean_flow=False,
+) -> np.ndarray:
+    # Preliminaries
+    # ----------------
+    # Calculate the integration frequencies. Note that depending on if we are calculating the sum or difference
+    # interactions the frequency range is different.
+
+    # Component 1
+    # ----------------
+    angular_freq = frequency_hz_coordinates * 2.0 * np.pi
+    wavenumbers = inverse_intrinsic_dispersion_relation(angular_freq, depth)
+
+    # precalculate the trigonometric functions
+    angles_rad_coordinates = np.deg2rad(angles_degrees_coordinates)
+    _cos = np.cos(angles_rad_coordinates)
+    _sin = np.sin(angles_rad_coordinates)
+
+    # Set up the integration
+    # ----------------
+    # Get angle stepsizes for integration. We use the midpoint rule for the angles.
+    delta_angle = _direction_bin(angles_degrees_coordinates, wrap=360)
+
+    # Integrate
+    # ----------------
+    nfreq = len(frequency_hz_coordinates)
+    ndir = len(angles_degrees_coordinates)
+
+    out = np.zeros((nfreq, ndir), dtype=variance_density.dtype)
+    for jfreq in range(nfreq):
+        for idir in range(ndir):
+            w1 = angular_freq[jfreq]
+            k1 = wavenumbers[jfreq]
+            kx1 = k1 * _cos[idir]
+            ky1 = k1 * _sin[idir]
+
+            sum = 0.0
+            for ifreq in range(nfreq):
+                # Use trapezoindal rule to integrate over the frequency. This expression reduces to 0.5*df at endpoints and
+                # df inbetween.
+                iu = min(ifreq + 1, nfreq - 1)
+                il = max(ifreq - 1, 0)
+                delta_freq = (
+                    frequency_hz_coordinates[iu] - frequency_hz_coordinates[il]
+                ) / 2.0
+
+                # Compoment 2 wavenumber, components and angular frequency. The sign index is used to determine if we are
+                # calculating the sum (sign_index=1) or difference (sign_index=-1) interactions.
+                k2 = wavenumbers[ifreq]
+                w2 = angular_freq[ifreq]
+                kx2 = k2 * _cos
+                ky2 = k2 * _sin
+
+                e2 = variance_density[ifreq, :]
+
+                # Calculate the interaction coefficients. Use interaction coefficient appropriate for Eulerian or Lagrangian
+                # observations.
+
+                if kind == "eulerian":
+                    include_stokes_drift = False
+                elif kind == "lagrangian":
+                    include_stokes_drift = True
+                else:
+                    raise Exception(
+                        "Unknown kind must be one of 'eulerian', 'lagrangian'"
+                    )
+
+                interaction_coef = _third_order_coef_dispersion_symmetric(
+                    w1,
+                    k1,
+                    kx1,
+                    ky1,
+                    w2,
+                    k2,
+                    kx2,
+                    ky2,
+                    depth,
+                    grav,
+                    include_mean_setdown,
+                    include_mean_flow,
+                    include_stokes_drift,
+                )
+                sum += np.sum(e2 * interaction_coef * delta_angle) * delta_freq
+
+            out[jfreq, idir] = sum
+
+    return out
+
+
+@jit(**numba_default)
+def stokes_dispersive_correction(
+    frequency_hz_coordinates,
+    angles_degrees_coordinates,
+    variance_density,
+    depth=np.inf,
+    kind="eulerian",
+    grav=_GRAV,
+    include_mean_setdown=False,
+    include_mean_flow=False,
+) -> float:
+
+    nl_dispersion = estimate_nonlinear_dispersion(
+        frequency_hz_coordinates,
+        angles_degrees_coordinates,
+        variance_density,
+        depth=depth,
+        kind=kind,
+        grav=grav,
+        include_mean_setdown=include_mean_setdown,
+        include_mean_flow=include_mean_flow,
+    )
+
+    func = nl_dispersion * variance_density
+    grad = np.zeros_like(func)
+
+    nfreq = len(frequency_hz_coordinates)
+    for ifreq in range(nfreq):
+        id = max(ifreq - 1, 0)
+        iu = min(ifreq + 1, nfreq - 1)
+        df = frequency_hz_coordinates[iu] - frequency_hz_coordinates[id]
+        grad[ifreq, :] = -(func[iu, :] - func[id, :]) / df / np.pi / 2
+
+    return grad
+
+
+@jit(**numba_default)
+def estimate_bound_contribution_nonlinear_1d(
+    frequency_target,
+    frequency_hz_coordinates,
+    angles_degrees_coordinates,
+    variance_density,
     sign_index,
     depth=np.inf,
     kind="eulerian",
-    grav=9.81,
+    grav=_GRAV,
 ) -> float:
-
     # Preliminaries
     # ----------------
     # Calculate the integration frequencies. Note that depending on if we are calculating the sum or difference
@@ -226,7 +555,6 @@ def estimate_bound_contribution_1d(
                 * delta_freq
                 * delta_angle[iangle]
             )
-
     return factor * sum
 
 

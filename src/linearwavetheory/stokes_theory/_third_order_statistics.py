@@ -1,5 +1,5 @@
 from linearwavetheory._utils import _direction_bin, _frequency_bin
-from linearwavetheory.stokes_theory._perturbation_theory_coeficients import (
+from linearwavetheory.stokes_theory._second_order_coeficients import (
     _second_order_surface_elevation,
 )
 from linearwavetheory.settings import PhysicsOptions, _parse_options
