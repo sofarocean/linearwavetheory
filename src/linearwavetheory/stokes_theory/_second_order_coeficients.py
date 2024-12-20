@@ -194,10 +194,19 @@ def _second_order_surface_elevation(w1, k1, kx1, ky1, w2, k2, kx2, ky2, depth, g
             coef = 0.0
         else:
             cg = np.abs(w1) / k1 * (0.5 + k1 * depth / np.sinh(2.0 * k1 * depth))
-            coef = -grav * (2.0 * cg * k1 / abs(w1) - 0.5) / (grav * depth - cg**2)
-            coef += -grav * inner_product / w1 / w2 / 2 + (
-                w1 * w2 + w1**2 + w2**2
-            ) / (2 * grav)
+            coef = (
+                -grav
+                * cg**2
+                / (grav * depth - cg**2)
+                * (
+                    k1 / cg / w1
+                    - k1**2 / 2 / w1**2
+                    + k1**2 / w1**2
+                    - w1**2 / 2 / grav**2
+                )
+                - grav * k1**2 / w1**2 / 2
+                + (w1**2) / (2 * grav)
+            )
 
     else:
         # self_interaction = False. Use the full expression
@@ -412,8 +421,8 @@ def _second_order_horizontal_lagrangian_surface_perturbation(
     w1, k1, kx1, ky1, w2, k2, kx2, ky2, direction, depth, grav
 ):
     """
-    THis is the second-order particle displacement in a frame of reference following the mean Lagrangian flow. As a
-    conseqence, the mean contributions (w1+w2) to the flow are absorved into the phase function and are excluded.
+    This is the second-order particle displacement in a frame of reference following the mean Lagrangian flow. As a
+    conseqence, the mean contributions (w1+w2) to the flow are absorbed into the phase function and are excluded.
 
     Parameters
     ----------
@@ -457,7 +466,59 @@ def _second_order_horizontal_lagrangian_surface_perturbation(
                 w1, k1, kx1, ky1, w2, k2, kx2, ky2, direction, depth, grav
             )
         ) / (w1 + w2)
+
     else:
         second_order_horizontal_surface_displacement = 0.0
 
     return second_order_horizontal_surface_displacement
+
+
+@vectorize(_interaction_signatures_velocity, **numba_default_vectorize)
+def _second_order_lagrangian_horizontal_velocity(
+    w1, k1, kx1, ky1, w2, k2, kx2, ky2, direction, depth, grav
+):
+    """
+
+    Parameters
+    ----------
+    :param w1: frequency of the first wave component in radians per second
+    :param k1: wavenumber magnitude of the first wave component in radians per meter
+    :param kx1: x-component of the wavenumber direction of the first wave component
+    :param ky1: y-component of the wavenumber direction of the first wave component
+    :param w2: frequency of the second wave component in radians per second
+    :param k2: wavenumber magnitude of the second wave component in radians per meter
+    :param kx2: x-component of the wavenumber direction of the second wave component
+    :param ky2: y-component of the wavenumber direction of the second wave component
+    :param direction: x or y direction (x > 0. or y < 0.)
+    :param depth: depth of the water in meters
+    :param grav: gravitational acceleration in meters per second squared
+    :return: the second order potential interaction coefficient
+
+    """
+    if w1 == 0.0 or w2 == 0.0:
+        return 0.0
+
+    eulerian = _second_order_horizontal_velocity(
+        w1, k1, kx1, ky1, w2, k2, kx2, ky2, direction, depth, grav
+    )
+
+    inner_product = kx1 * kx2 + ky1 * ky2
+
+    if direction >= 0.0:
+        k_dir_1 = kx1
+        k_dir_2 = kx2
+    else:
+        k_dir_1 = ky1
+        k_dir_2 = ky2
+
+    return (
+        eulerian
+        - (grav**2)
+        * inner_product
+        * (w2 * k_dir_2 + w1 * k_dir_1)
+        / 2
+        / w1**2
+        / w2**2
+        + w2 * k_dir_2 / 2
+        + w1 * k_dir_1 / 2
+    )

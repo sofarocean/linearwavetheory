@@ -89,7 +89,7 @@ def intrinsic_dispersion_relation(
 
     :return: The intrinsic angular frequency.
     """
-    numerical_option, physics_options = _parse_options(None, physics_options)
+    numerical_option, physics_options, _ = _parse_options(None, physics_options, None)
 
     wavenumber_magnitude = atleast_1d(wavenumber_magnitude)
     if np.any(wavenumber_magnitude < 0.0):
@@ -145,7 +145,7 @@ def intrinsic_group_speed(
     if np.any(wavenumber_magnitude < 0):
         raise ValueError("Wavenumber magnitude must be positive")
 
-    numerical_option, physics_options = _parse_options(None, physics_options)
+    numerical_option, physics_options, _ = _parse_options(None, physics_options, None)
 
     args = (
         wavenumber_magnitude,
@@ -186,11 +186,11 @@ def inverse_intrinsic_dispersion_relation(
     - For zero frequency we return zero wavenumber
     - Stopping criterium is based on relative and absolute tolerance:
 
-            | w - w_est | / w < relative_tolerance  (default 1e-3)
+            | w - w_est | / w < relative_tolerance  (default 1e-4)
 
             and
 
-            | w - w_est |  < absolute_tolerance  (default np.inf
+            | w - w_est |  < absolute_tolerance  (default np.inf)
 
         where w is the intrinsic angular frequency and w_est is the estimated intrinsic angular frequency based on the
         current estimate of the wavenumber. Per default we do not use the absolute stopping criterium.
@@ -219,8 +219,8 @@ def inverse_intrinsic_dispersion_relation(
     intrinsic_angular_frequency = atleast_1d(intrinsic_angular_frequency)
     depth = atleast_1d(depth)
 
-    numerical_options, physics_options = _parse_options(
-        numerical_options, physics_options
+    numerical_options, physics_options, _ = _parse_options(
+        numerical_options, physics_options, None
     )
 
     args = (
@@ -338,7 +338,10 @@ def intrinsic_phase_speed(
     if np.any(wavenumber_magnitude < 0):
         raise ValueError("Wavenumber magnitude must be positive")
 
-    numerical_options, physics_options = _parse_options(None, physics_options)
+    (
+        numerical_options,
+        physics_options,
+    ) = _parse_options(None, physics_options, _)
 
     # Function pointer would be nicer- but I could not get it to work with numba typing
     args = (

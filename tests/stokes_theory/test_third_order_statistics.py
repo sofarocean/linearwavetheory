@@ -15,7 +15,32 @@ def stokes_sum_ampitude(k, d):
 
 
 def stokes_setdown(wavenumber, depth):
-    return -wavenumber / np.sinh(2 * wavenumber * depth) / 2
+    angular_frequency = np.sqrt(_GRAV * wavenumber * np.tanh(wavenumber * depth))
+    sh = np.sinh(wavenumber * depth)
+    sh2 = np.sinh(2.0 * wavenumber * depth)
+    sh4 = np.sinh(4.0 * wavenumber * depth)
+
+    cg = (
+        np.abs(angular_frequency)
+        / wavenumber
+        * (0.5 + wavenumber * depth / np.sinh(2.0 * wavenumber * depth))
+    )
+    K = (
+        angular_frequency**2
+        / sh**2
+        / 4
+        * (sh4 + 3 * sh2 + 2 * wavenumber * depth)
+        / (sh2 + 2 * wavenumber * depth)
+    )
+
+    return (
+        -1
+        / _GRAV
+        * (
+            cg**2 * K / (_GRAV * depth - cg**2)
+            + angular_frequency**2 / 4 / sh**2
+        )
+    )
 
 
 def stokes_wave(amplitude, wavenumber, depth, phase, include_set_down=True):
@@ -63,9 +88,9 @@ def test_skewness_spectrum():
     )
 
     skewness = surface_elevation_skewness(
-        freq,
+        freq * np.pi * 2,
         dir,
-        spec,
+        spec / np.pi / 2,
         depth=depth,
     )
 
