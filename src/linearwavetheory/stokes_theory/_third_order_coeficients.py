@@ -172,10 +172,6 @@ def _third_order_dispersion_correction_non_symmetric_sigma_coordinates(
         w3, k3, kx3, ky3, w2, k2, kx2, ky2, depth, grav
     )
 
-    second_order_w_23 = _second_order_vertical_velocity(
-        w3, k3, kx3, ky3, w2, k2, kx2, ky2, depth, grav
-    )
-
     ux_23 = _second_order_horizontal_velocity(
         w3, k3, kx3, ky3, w2, k2, kx2, ky2, 1.0, depth, grav
     )
@@ -380,6 +376,106 @@ def _third_order_amplitude_correction_non_symmetric(
     return term_c + term_u + term_w + term_wz + term_tb + term_x + term_r
 
 
+@vectorize(_interaction_signatures_non_symmetric, **numba_default_vectorize)
+def _third_order_amplitude_correction_non_symmetric_sigma_coordinates(
+    w1,
+    k1,
+    kx1,
+    ky1,
+    w2,
+    k2,
+    kx2,
+    ky2,
+    w3,
+    k3,
+    kx3,
+    ky3,
+    depth,
+    grav,
+    wave_driven_setup_included_in_mean_depth,
+    wave_driven_flow_included_in_mean_flow,
+    lagrangian=False,
+):
+    # read this as "inner product between k1 and k2 plus k3)
+    inner_product_12p3 = kx1 * (kx2 + kx3) + ky1 * (ky2 + ky3)
+
+    second_order_potential_23 = _second_order_potential(
+        w3, k3, kx3, ky3, w2, k2, kx2, ky2, depth, grav
+    )
+
+    inner_product_k23 = kx2 * kx3 + ky2 * ky3
+
+    second_order_surface_elevation_23 = _second_order_surface_elevation(
+        w3, k3, kx3, ky3, w2, k2, kx2, ky2, depth, grav
+    )
+
+    second_order_w_23 = _second_order_vertical_velocity(
+        w3, k3, kx3, ky3, w2, k2, kx2, ky2, depth, grav
+    )
+
+    ux_23 = _second_order_horizontal_velocity(
+        w3, k3, kx3, ky3, w2, k2, kx2, ky2, 1.0, depth, grav
+    )
+
+    uy_23 = _second_order_horizontal_velocity(
+        w3, k3, kx3, ky3, w2, k2, kx2, ky2, -1.0, depth, grav
+    )
+
+    k23 = np.sqrt((kx2 + kx3) ** 2 + (ky2 + ky3) ** 2)
+    if w2 * w3 < 0.0 and w2 + w3 == 0 and k23 == 0:
+        if wave_driven_setup_included_in_mean_depth:
+            second_order_surface_elevation_23 = 0.0
+
+        if wave_driven_flow_included_in_mean_flow:
+            ux_23 = 0.0
+            uy_23 = 0.0
+
+    dispersion = (
+        _third_order_dispersion_correction_non_symmetric_sigma_coordinates(
+            w1,
+            k1,
+            kx1,
+            ky1,
+            w2,
+            k2,
+            kx2,
+            ky2,
+            w3,
+            k3,
+            kx3,
+            ky3,
+            depth,
+            grav,
+            wave_driven_setup_included_in_mean_depth,
+            wave_driven_flow_included_in_mean_flow,
+            lagrangian,
+        )
+        / (w1 + w2 + w3)
+        / grav
+        / 2
+    )
+    # To note the /grav/2 is because we add that factor in the symmetric implementation
+
+    k1p2 = kx1 * kx2 + ky1 * ky2
+    k1p3 = kx1 * kx3 + ky1 * ky3
+    bernouilli = (
+        -(kx1 * ux_23 + ky1 * uy_23) / w1
+        - (k1p2 * w2 + k1p3 * w3) / 2 / w1
+        - w1 * (w2 + w3) * second_order_surface_elevation_23 / grav
+    )
+    particular = (
+        +second_order_surface_elevation_23 * (w1 + w2 + w3) * w1 / grav
+        - second_order_potential_23 * (w2 + w3) ** 2 * (w1 + w2 + w3) / grav**2
+        + k1**2 * (w1 + w2 + w3) / 2 / w1
+    )
+    if lagrangian:
+        raise Exception(
+            "third_order_amplitude_correction_sigma_coordinates is not implemented for the Lagrangian case"
+        )
+
+    return dispersion + bernouilli + particular
+
+
 @vectorize(_interaction_signatures_symmetric, **numba_default_vectorize)
 def third_order_amplitude_correction(
     w1,
@@ -411,6 +507,58 @@ def third_order_amplitude_correction(
         ii3 = (jj + 2) % 3
 
         coef += _third_order_amplitude_correction_non_symmetric(
+            w[ii1],
+            k[ii1],
+            kx[ii1],
+            ky[ii1],
+            w[ii2],
+            k[ii2],
+            kx[ii2],
+            ky[ii2],
+            w[ii3],
+            k[ii3],
+            kx[ii3],
+            ky[ii3],
+            depth,
+            grav,
+            wave_driven_setup_included_in_mean_depth,
+            wave_driven_flow_included_in_mean_flow,
+            lagrangian,
+        )
+    return coef
+
+
+@vectorize(_interaction_signatures_symmetric, **numba_default_vectorize)
+def third_order_amplitude_correction_sigma_coordinates(
+    w1,
+    k1,
+    kx1,
+    ky1,
+    w2,
+    k2,
+    kx2,
+    ky2,
+    depth,
+    grav,
+    wave_driven_setup_included_in_mean_depth,
+    wave_driven_flow_included_in_mean_flow,
+    lagrangian=False,
+):
+    if w1 == 0.0 or w2 == 0.0:
+        return 0.0
+
+    w = (w1, w2, -w2)
+    k = (k1, k2, k2)
+    kx = (kx1, kx2, -kx2)
+    ky = (ky1, ky2, -ky2)
+
+    coef = 0.0
+    for jj in range(3):
+        ii1 = jj % 3
+        ii2 = (jj + 1) % 3
+        ii3 = (jj + 2) % 3
+
+        coef += _third_order_amplitude_correction_non_symmetric_sigma_coordinates(
             w[ii1],
             k[ii1],
             kx[ii1],

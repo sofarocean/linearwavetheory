@@ -80,22 +80,6 @@ def _pointwise_estimate_nonlinear_dispersion(
                 # observations.
 
                 if not nonlinear_options.use_s_theory:
-                    interaction_coef = third_order_dispersion_correction(
-                        w1,
-                        k1,
-                        kx1,
-                        ky1,
-                        w2,
-                        k2,
-                        kx2,
-                        ky2,
-                        depth,
-                        physics_options.grav,
-                        nonlinear_options.wave_driven_flow_included_in_mean_flow,
-                        nonlinear_options.wave_driven_setup_included_in_mean_depth,
-                        lagrangian,
-                    )
-                else:
                     interaction_coef = (
                         third_order_dispersion_correction_sigma_coordinates(
                             w1,
@@ -112,6 +96,22 @@ def _pointwise_estimate_nonlinear_dispersion(
                             nonlinear_options.wave_driven_setup_included_in_mean_depth,
                             lagrangian,
                         )
+                    )
+                else:
+                    interaction_coef = third_order_dispersion_correction(
+                        w1,
+                        k1,
+                        kx1,
+                        ky1,
+                        w2,
+                        k2,
+                        kx2,
+                        ky2,
+                        depth,
+                        physics_options.grav,
+                        nonlinear_options.wave_driven_flow_included_in_mean_flow,
+                        nonlinear_options.wave_driven_setup_included_in_mean_depth,
+                        lagrangian,
                     )
 
                 if w1 == w2:

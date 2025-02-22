@@ -1,6 +1,7 @@
 from ._nonlinear_dispersion import _pointwise_estimate_nonlinear_dispersion
 from ._third_order_coeficients import (
     third_order_amplitude_correction,
+    third_order_amplitude_correction_sigma_coordinates,
 )
 from ._second_order_coeficients import (
     _second_order_surface_elevation,
@@ -233,21 +234,38 @@ def estimate_nonlinear_amplitude_correction_1d(
         for iangle in range(nangle):
             e2 = variance_density[ifreq, iangle]
 
-            interaction_coef = third_order_amplitude_correction(
-                w1,
-                k1,
-                kx1[iangle],
-                ky1[iangle],
-                w2,
-                k2,
-                kx2,
-                ky2,
-                depth,
-                physics_options.grav,
-                nonlinear_options.wave_driven_flow_included_in_mean_flow,
-                nonlinear_options.wave_driven_setup_included_in_mean_depth,
-                lagrangian,
-            )
+            if nonlinear_options.use_s_theory:
+                interaction_coef = third_order_amplitude_correction_sigma_coordinates(
+                    w1,
+                    k1,
+                    kx1[iangle],
+                    ky1[iangle],
+                    w2,
+                    k2,
+                    kx2,
+                    ky2,
+                    depth,
+                    physics_options.grav,
+                    nonlinear_options.wave_driven_flow_included_in_mean_flow,
+                    nonlinear_options.wave_driven_setup_included_in_mean_depth,
+                    lagrangian,
+                )
+            else:
+                interaction_coef = third_order_amplitude_correction(
+                    w1,
+                    k1,
+                    kx1[iangle],
+                    ky1[iangle],
+                    w2,
+                    k2,
+                    kx2,
+                    ky2,
+                    depth,
+                    physics_options.grav,
+                    nonlinear_options.wave_driven_flow_included_in_mean_flow,
+                    nonlinear_options.wave_driven_setup_included_in_mean_depth,
+                    lagrangian,
+                )
 
             # Factor 2 because positive/negative frequencies. /4 because one-sided densities.
             sum += (
@@ -336,21 +354,38 @@ def estimate_nonlinear_amplitude_correction_2d(
         e1 = variance_density[ifreq0, :]
         e2 = variance_density[ifreq, iangle]
 
-        interaction_coef = third_order_amplitude_correction(
-            w1,
-            k1,
-            kx1,
-            ky1,
-            w2,
-            k2,
-            kx2,
-            ky2,
-            depth,
-            physics_options.grav,
-            nonlinear_options.wave_driven_flow_included_in_mean_flow,
-            nonlinear_options.wave_driven_setup_included_in_mean_depth,
-            lagrangian,
-        )
+        if nonlinear_options.use_s_theory:
+            interaction_coef = third_order_amplitude_correction_sigma_coordinates(
+                w1,
+                k1,
+                kx1,
+                ky1,
+                w2,
+                k2,
+                kx2,
+                ky2,
+                depth,
+                physics_options.grav,
+                nonlinear_options.wave_driven_flow_included_in_mean_flow,
+                nonlinear_options.wave_driven_setup_included_in_mean_depth,
+                lagrangian,
+            )
+        else:
+            interaction_coef = third_order_amplitude_correction(
+                w1,
+                k1,
+                kx1,
+                ky1,
+                w2,
+                k2,
+                kx2,
+                ky2,
+                depth,
+                physics_options.grav,
+                nonlinear_options.wave_driven_flow_included_in_mean_flow,
+                nonlinear_options.wave_driven_setup_included_in_mean_depth,
+                lagrangian,
+            )
 
         # Factor 2 because positive/negative frequencies. /4 because one-sided densities.
         sum += 2 * (np.sum(e1 * e2 * interaction_coef * delta_angle) * delta_freq) / 4

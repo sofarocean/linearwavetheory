@@ -199,7 +199,7 @@ def _second_order_surface_elevation(w1, k1, kx1, ky1, w2, k2, kx2, ky2, depth, g
                 * cg**2
                 / (grav * depth - cg**2)
                 * (
-                    k1 / cg / w1
+                    np.abs(k1) / cg / np.abs(w1)
                     - k1**2 / 2 / w1**2
                     + k1**2 / w1**2
                     - w1**2 / 2 / grav**2
@@ -207,7 +207,6 @@ def _second_order_surface_elevation(w1, k1, kx1, ky1, w2, k2, kx2, ky2, depth, g
                 - grav * k1**2 / w1**2 / 2
                 + (w1**2) / (2 * grav)
             )
-
     else:
         # self_interaction = False. Use the full expression
         w12 = np.sqrt(grav * ksum * np.tanh(ksum * depth))
