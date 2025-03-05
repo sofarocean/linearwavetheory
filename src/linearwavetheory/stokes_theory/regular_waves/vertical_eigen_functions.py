@@ -20,7 +20,7 @@ def sh(dimensionless_depth, dimensionless_height, n, **kwargs):
     wave_regime = get_wave_regime(**kwargs)
 
     if wave_regime == "shallow":
-        _sh = 1
+        _sh = dimensionless_depth + dimensionless_height
     elif wave_regime == "deep":
         _sh = np.exp(n * dimensionless_height)
     else:

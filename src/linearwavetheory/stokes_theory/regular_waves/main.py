@@ -31,6 +31,8 @@ from linearwavetheory.stokes_theory.regular_waves.lagrangian_displacement_amplit
     lagrangian_dimensionless_horizontal_displacement_first_harmonic,
     lagrangian_dimensionless_horizontal_displacement_second_harmonic,
     lagrangian_dimensionless_horizontal_displacement_third_harmonic,
+    lagrangian_dimensionless_vertical_displacement_amplitude_fourth_harmonic,
+    x44,
 )
 from linearwavetheory.stokes_theory.regular_waves.mean_properties import (
     dimensionless_lagrangian_setup,
@@ -110,7 +112,14 @@ def dimensionless_eulerian_free_surface_elevation(
     """
 
     phase = phase_function(
-        steepness, wavenumber, depth, time, xcoordinate, relative_phase_offset, **kwargs
+        steepness,
+        wavenumber,
+        depth,
+        time,
+        xcoordinate,
+        0,
+        relative_phase_offset,
+        **kwargs
     )
 
     a1 = dimensionless_surface_amplitude_first_harmonic(
@@ -281,7 +290,16 @@ def vertical_particle_displacement(
         )
     )
 
-    return a1 * np.cos(phase) + a2 * np.cos(2 * phase) + a3 * np.cos(3 * phase)
+    a4 = (
+        scaling_factor
+        * lagrangian_dimensionless_vertical_displacement_amplitude_fourth_harmonic(
+            steepness, wavenumber, depth, height, **kwargs
+        )
+    )
+
+    return a1 * np.cos(
+        phase
+    )  # +  a2 * np.cos(2 * phase) + a3 * np.cos(3 * phase) + a4 * np.cos(4 * phase)
 
 
 def vertical_particle_location(
@@ -386,7 +404,21 @@ def horizontal_particle_displacement(
         )
     )
 
-    return a1 * np.sin(phase) + a2 * np.sin(2 * phase) + a3 * np.sin(3 * phase)
+    if kwargs.get("order", _DEFAULT_ORDER) == 4:
+        a4 = (
+            scaling_factor
+            * steepness**4
+            * x44(wavenumber * depth, wavenumber * height, **kwargs)
+        )
+    else:
+        a4 = 0
+
+    return (
+        a1 * np.sin(phase)
+        + a2 * np.sin(2 * phase)
+        + a3 * np.sin(3 * phase)
+        + a4 * np.sin(4 * phase)
+    )
 
 
 def horizontal_particle_location(

@@ -59,7 +59,6 @@ def dimensionless_nonlinear_dispersion_relation(
         _disp = 1 + 9 * steepness**2 / relative_depth**4
 
     elif physics_options.wave_regime == "deep":
-        # See 3.12 in Zhao and Liu (2022).
         _disp = 1 + 0.5 * steepness**2
 
     else:
@@ -84,12 +83,6 @@ def dimensionless_nonlinear_dispersion_relation(
         )
 
     else:
-        # Zhao and Liu (2022) Eq. 3.7 A44
-        # alpha = ((1 + mu**2) / (1-  mu**2))
-        # w4 = (
-        #     (20 * alpha**5 + 112 * alpha**4- 100 * alpha**3 - 68 * alpha**2 - 211 * alpha +328)
-        #     / (32 * (alpha-1)**5)
-        # )
         _disp += (
             steepness**4
             * (

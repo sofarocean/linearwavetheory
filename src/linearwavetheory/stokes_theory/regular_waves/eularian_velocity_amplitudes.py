@@ -2,26 +2,24 @@ import numpy as np
 
 from linearwavetheory.settings import _parse_options
 from linearwavetheory.stokes_theory.regular_waves.settings import _DEFAULT_ORDER
+from .utils import get_wave_regime
+from .vertical_eigen_functions import ch, sh
 
 
 def dimensionless_horizontal_velocity_amplitude(
-    steepness, relative_depth, relative_height, order, **kwargs
+    steepness, relative_depth, relative_height, n, **kwargs
 ):
-    return (
-        dimensionless_velocity_amplitude(steepness, relative_depth, order, **kwargs)
-        * np.cosh(order * (relative_height + relative_depth))
-        / np.cosh(order * relative_depth)
-    )
+    return dimensionless_velocity_amplitude(
+        steepness, relative_depth, n, **kwargs
+    ) * ch(relative_depth, relative_height, n, **kwargs)
 
 
 def dimensionless_vertical_velocity_amplitude(
-    steepness, relative_depth, relative_height, order, **kwargs
+    steepness, relative_depth, relative_height, n, **kwargs
 ):
-    return (
-        dimensionless_velocity_amplitude(steepness, relative_depth, order, **kwargs)
-        * np.sinh(order * (relative_height + relative_depth))
-        / np.cosh(order * relative_depth)
-    )
+    return dimensionless_velocity_amplitude(
+        steepness, relative_depth, n, **kwargs
+    ) * sh(relative_depth, relative_height, n, **kwargs)
 
 
 def dimensionless_velocity_amplitude(steepness, relative_depth, harmonic, **kwargs):
