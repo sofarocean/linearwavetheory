@@ -2,7 +2,7 @@ import numpy as np
 
 from linearwavetheory.settings import _parse_options
 from linearwavetheory.stokes_theory.regular_waves.settings import _DEFAULT_ORDER
-
+from utils import get_wave_regime
 
 def dimensionless_surface_amplitude_first_harmonic(
     steepness, wavenumber, depth, **kwargs
@@ -496,3 +496,207 @@ def dimensionless_material_surface_amplitude_fourth_harmonic(
         )
 
         return steepness**4 * (a * sh2 + b * sh4)
+
+
+
+def eta11(
+    steepness, relative_depth, **kwargs
+):
+    """
+    This function calculates the surface amplitude of the primary harmonic wave of a third order Stokes solution. Note
+    that the primary harmonic contains a third order correction.
+
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber
+    :param depth: depth
+    :param kwargs:
+    :return:
+    """
+
+    return 1
+
+def eta31(
+            steepness, relative_depth, **kwargs
+    ):
+    wave_regime = get_wave_regime(**kwargs)
+    mu = np.tanh(relative_depth)
+
+
+    if wave_regime == "shallow":
+        # Limit of the general case as kd -> 0. Note that the limit is singular, and the perturbation expansion formally
+        # breaks down if steepness/kd**3 (Ursell number) is not small.
+        third_order = 3 / 16 / mu**4
+    elif wave_regime == "deep":
+        # See 3.10 in Zhao and Liu (2022)
+        third_order = 0.125
+
+    else:
+        # See 3.3, 3.4 in Zhao and Liu (2022)
+        third_order =  (3 + 8 * mu**2 - 9 * mu**4) / 16 / mu**4
+
+    return third_order
+
+def eta51(
+            steepness, relative_depth, **kwargs
+    ):
+        wave_regime = get_wave_regime(**kwargs)
+        mu = np.tanh(relative_depth)
+
+        if wave_regime == "shallow":
+            # Limit of the general case as kd -> 0. Note that the limit is singular, and the perturbation expansion formally
+            # breaks down if steepness/kd**3 (Ursell number) is not small.
+            third_order = 3 / 16 / mu ** 4
+        elif wave_regime == "deep":
+            # See 3.10 in Zhao and Liu (2022)
+            third_order = 0.125
+
+        else:
+            # See 3.3, 3.4 in Zhao and Liu (2022)
+            third_order = (3 + 8 * mu ** 2 - 9 * mu ** 4) / 16 / mu ** 4
+
+        return third_order
+
+    if order < 5:
+        return third_order
+
+    if physics_options.wave_regime == "shallow":
+        raise NotImplementedError(
+            "Fifth order surface amplitude not implemented for shallow water waves"
+        )
+
+    elif physics_options.wave_regime == "deep":
+        raise NotImplementedError(
+            "Fifth order surface amplitude not implemented for deep water waves"
+        )
+
+    else:
+        alpha = (1 + mu**2) / (1 - mu**2)
+        fifth_order = (
+            (
+                121 * alpha**5
+                + 263 * alpha**4
+                + 376 * alpha**3
+                - 1999 * alpha**2
+                + 2509 * alpha
+                - 1108
+            )
+            / (192 * (alpha - 1) ** 5)
+        ) * steepness**5
+    return third_order + fifth_order
+
+
+def dimensionless_surface_amplitude_second_harmonic(
+    steepness, wavenumber, depth, **kwargs
+):
+    order = kwargs.get("order", _DEFAULT_ORDER)
+    numerical_options, physics_options, nonlinear_options = _parse_options(
+        kwargs.get("physics_options", None),
+        kwargs.get("physics_options", None),
+        kwargs.get("nonlinear_options", None),
+    )
+
+    kd = wavenumber * depth
+    mu = np.tanh(wavenumber * depth)
+
+    if order < 2:
+        return np.zeros_like(steepness * wavenumber)
+
+    if physics_options.wave_regime == "shallow":
+        # Limit of the general case as kd -> 0. Note that the limit is singular, and the perturbation expansion formally
+        # breaks down if steepness/kd**3 (Ursell number) is not small.
+        second_order = steepness**2 * 3 / 4 / kd**3
+
+    elif physics_options.wave_regime == "deep":
+        # See 3.10 in Zhao and Liu (2022)
+        second_order = 0.5 * steepness**2
+
+    else:
+        # See 3.3, 3.4 in Zhao and Liu (2022)
+        second_order = steepness**2 * ((3 - mu**2) / 4 / mu**3)
+
+    if order < 4:
+        return second_order
+
+    if physics_options.wave_regime == "shallow":
+        raise NotImplementedError(
+            "Fourtg order amplitude not implemented for shallow water waves"
+        )
+
+    elif physics_options.wave_regime == "deep":
+        raise NotImplementedError(
+            "Fourth order velocity amplitude not implemented for deep water waves"
+        )
+
+    else:
+        fourth_order = (
+            steepness**4
+            * (129 * mu**8 - 826 * mu**6 + 1152 * mu**4 - 54 * mu**2 - 81)
+            / (384 * mu**9)
+        )
+
+    return second_order + fourth_order
+
+
+def dimensionless_surface_amplitude_third_harmonic(
+    steepness, wavenumber, depth, **kwargs
+):
+    order = kwargs.get("order", _DEFAULT_ORDER)
+    numerical_options, physics_options, nonlinear_options = _parse_options(
+        kwargs.get("physics_options", None),
+        kwargs.get("physics_options", None),
+        kwargs.get("nonlinear_options", None),
+    )
+
+    kd = wavenumber * depth
+    mu = np.tanh(kd)
+    if order < 3:
+        return np.zeros_like(steepness * wavenumber)
+
+    if physics_options.wave_regime == "shallow":
+        # Limit of the general case as kd -> 0. Note that the limit is singular, and the perturbation expansion formally
+        # breaks down if steepness/kd**3 (Ursell number) is not small.
+        third_order = steepness**3 * 27 / 64 / kd**6
+
+    elif physics_options.wave_regime == "deep":
+        # See 3.10 in Zhao and Liu (2022)
+        third_order = 0.375 * steepness**3
+
+    else:
+        # See 3.3, 3.4 in Zhao and Liu (2022)
+        third_order = (
+            steepness**3
+            * (27 - 9 * mu**2 + 9 * mu**4 - 3 * mu**6)
+            / 64
+            / mu**6
+        )
+
+    if order < 5:
+        return third_order
+
+    if physics_options.wave_regime == "shallow":
+        raise NotImplementedError(
+            "Fifth order surface amplitude not implemented for shallow water waves"
+        )
+
+    elif physics_options.wave_regime == "deep":
+        raise NotImplementedError(
+            "Fifth order surface amplitude not implemented for deep water waves"
+        )
+
+    else:
+        alpha = (1 + mu**2) / (1 - mu**2)
+        fifth_order = (
+            9
+            * (
+                57 * alpha**7
+                + 204 * alpha**6
+                - 53 * alpha**5
+                - 782 * alpha**4
+                - 741 * alpha**3
+                - 52 * alpha**2
+                + 371 * alpha
+                + 186
+            )
+            / (128 * (alpha - 1) ** 6 * (3 * alpha + 2))
+        ) * steepness**5
+    return third_order + fifth_order

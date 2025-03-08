@@ -33,6 +33,20 @@ def waveheight(steepness, wavenumber, depth, **kwargs):
     return 2 * (a1 + a3) / wavenumber
 
 
+def dimensionless_surface_variance(steepness, relative_depth, **kwargs):
+    """
+    This function calculates the wave height of a third order Stokes wave.
+
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber
+    :param depth: depth
+    :param kwargs:
+    :return:
+    """
+    dimensionless_surface_amplitude_third_harmonic()
+    return 1
+
+
 def dimensionless_crest_height(steepness, wavenumber, depth, **kwargs):
     a1 = dimensionless_surface_amplitude_first_harmonic(
         steepness, wavenumber, depth, **kwargs
