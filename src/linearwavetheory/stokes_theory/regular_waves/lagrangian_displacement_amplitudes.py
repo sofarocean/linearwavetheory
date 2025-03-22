@@ -13,6 +13,7 @@ from linearwavetheory.stokes_theory.regular_waves.eulerian_elevation_amplitudes 
     dimensionless_material_surface_amplitude_third_harmonic,
     dimensionless_material_surface_amplitude_fourth_harmonic,
 )
+import linearwavetheory.stokes_theory.regular_waves.eulerian_elevation_amplitudes as eulerian_elevation
 from .vertical_eigen_functions import ch, sh
 from .utils import get_wave_regime
 from linearwavetheory.stokes_theory.regular_waves.settings import _DEFAULT_ORDER
@@ -773,3 +774,184 @@ def dimensionless_stokes_drift(steepness, relative_depth, relative_height=0, **k
         fourth_order = a * ch4 + b * ch2
 
     return steepness**2 * second_order + steepness**4 * fourth_order
+
+
+def eta11(relative_depth, relative_height, **kwargs):
+    return eulerian_elevation.eta11(relative_depth, relative_height, **kwargs)
+
+def eta31(relative_depth, relative_height, **kwargs):
+    wave_regime = get_wave_regime(**kwargs)
+    mu = np.tanh(relative_depth)
+    sh1 = sh(relative_depth, relative_height, 1, **kwargs)
+    sh3 = sh(relative_depth, relative_height, 3, **kwargs)
+
+    if wave_regime == "shallow":
+        beta = 9 / mu**5 / 32
+        alpha =3 / mu**5 / 32
+
+        lagrangian_amplitude = alpha *sh1 + beta * sh3
+    elif wave_regime == "deep":
+        lagrangian_amplitude = 3 / 8 * sh3
+    else:
+        beta = 1 / mu**5 / 32 * (21 * mu**2 - 18 * mu**4 + 9)
+        alpha = (1 - mu**2) * (3 - 4 * mu**2) / mu**5 / 32
+
+        lagrangian_amplitude = alpha *sh1 + beta * sh3
+
+    return lagrangian_amplitude + eulerian_elevation.eta31(relative_depth, relative_height, **kwargs)
+
+
+def eta22(relative_depth, relative_height, **kwargs):
+    wave_regime = get_wave_regime(**kwargs)
+    mu = np.tanh(relative_depth)
+    sh2 = sh(relative_depth, relative_height, 2, **kwargs)
+
+
+    if wave_regime == "shallow":
+        lagrangian_amplitude = -1 / 4 / mu**2 * sh2
+
+    elif wave_regime == "deep":
+        lagrangian_amplitude = -1 / 2 * sh2
+
+    else:
+
+        lagrangian_amplitude = -(1 + mu**2) / 4 / mu**2 * sh2
+
+    return lagrangian_amplitude + eulerian_elevation.eta22(relative_depth, relative_height, **kwargs)
+
+def eta42(relative_depth, relative_height, **kwargs):
+    wave_regime = get_wave_regime(**kwargs)
+    mu = np.tanh(relative_depth)
+    sh2 = sh(relative_depth, relative_height, 2, **kwargs)
+    sh4 = sh(relative_depth, relative_height, 4, **kwargs)
+
+    if wave_regime == "shallow":
+        a =  27 / (384 * mu**8)
+        b =27 / (192 * mu**8)
+
+        lagrangian_amplitude = (a * sh2 + b * sh4)
+
+    elif wave_regime == "deep":
+        lagrangian_amplitude = 0.5 * sh2 - 7/6 * sh4
+
+    else:
+
+        a = (29 * mu**8 + 30 * mu**6 + 40 * mu**4 + 66 * mu**2 + 27) / (
+            384 * mu**8
+        )
+        b = (47 * mu**8 + 180 * mu**6 - 538 * mu**4 + 60 * mu**2 + 27) / (
+            192 * mu**8
+        )
+
+        lagrangian_amplitude = (a * sh2 + b * sh4)
+
+    return lagrangian_amplitude + eulerian_elevation.eta42(relative_depth, relative_height, **kwargs)
+
+
+def eta33(relative_depth, relative_height, **kwargs):
+    wave_regime = get_wave_regime(**kwargs)
+    mu = np.tanh(relative_depth)
+    sh1 = sh(relative_depth, relative_height, 1, **kwargs)
+    sh3 = sh(relative_depth, relative_height, 3, **kwargs)
+
+    if wave_regime == "shallow":
+        # Limit of the general case as kd -> 0. Note that the limit is singular, and the perturbation expansion formally
+        # breaks down if steepness/kd**3 (Ursell number) is not small.
+        alpha =3 / mu ** 5 / 32
+        beta = 9 / mu ** 5 / 32
+
+        lagrangian_amplitude = -alpha * sh1 - beta * sh3
+
+    elif wave_regime == "deep":
+        lagrangian_amplitude = 3 / 8 *  sh3
+    else:
+
+        alpha = (1 - mu**2) * (3 - 4 * mu**2) / mu**5 / 32
+        beta = 1 / mu**5 / 32 * (21 * mu**2 - 18 * mu**4 + 9)
+
+        lagrangian_amplitude = -alpha  * sh1 - beta *  sh3
+
+    return lagrangian_amplitude + eulerian_elevation.eta33(relative_depth, relative_height, **kwargs)
+
+def eta44(relative_depth, relative_height, **kwargs):
+    wave_regime = get_wave_regime(**kwargs)
+    mu = np.tanh(relative_depth)
+    sh2 = sh(relative_depth, relative_height, 2, **kwargs)
+    sh4 = sh(relative_depth, relative_height, 4, **kwargs)
+
+    if wave_regime == "shallow":
+        alpha = - 3/ (128 * mu**8)
+        beta = - 27 / (128 * mu**8)
+        lagrangian_amplitude = alpha  * sh2 + beta  * sh4
+
+    elif wave_regime == "deep":
+        lagrangian_amplitude = - sh4/3
+    else:
+        alpha = (
+            79 * mu**8
+            - 114 * mu**6
+            - 52 * mu**4
+            + 114 * mu**2
+            - 27
+        ) / (384 * mu**8)
+        beta = (
+            -49 * mu**8
+            - 180 * mu**6
+            + 554 * mu**4
+            - 372 * mu**2
+            - 81
+        ) / (384 * mu**8)
+
+        lagrangian_amplitude = alpha  * sh2 + beta  * sh4
+
+    return lagrangian_amplitude + eulerian_elevation.eta44(relative_depth, relative_height, **kwargs)
+
+
+def eta20(relative_depth, relative_height, **kwargs):
+    wave_regime = get_wave_regime(**kwargs)
+    mu = np.tanh(relative_depth)
+    sh2 = sh(relative_depth, relative_height, 2, **kwargs)
+    sh4 = sh(relative_depth, relative_height, 4, **kwargs)
+
+    if wave_regime == "shallow":
+        # Limit of the general case as kd -> 0. Note that the limit is singular, and the perturbation expansion formally
+        # breaks down if steepness/kd**3 (Ursell number) is not small.
+        lagrangian_amplitude = 1/ 4 / mu**2 * sh2
+
+    elif wave_regime == "deep":
+        lagrangian_amplitude = 1 / 2  * sh2
+
+    else:
+        lagrangian_amplitude = (1 + mu**2) / 4 / mu**2 * sh2
+
+    return lagrangian_amplitude
+
+
+def eta40(relative_depth, relative_height, **kwargs):
+    wave_regime = get_wave_regime(**kwargs)
+    mu = np.tanh(relative_depth)
+    sh2 = sh(relative_depth, relative_height, 2, **kwargs)
+    sh4 = sh(relative_depth, relative_height, 4, **kwargs)
+
+    if wave_regime == "shallow":
+        lagrangian_amplitude = 9.0 / (128 * mu**8) * sh4
+
+    elif wave_regime == "deep":
+        lagrangian_amplitude = -1 / 2 * sh2 + 1.5 * sh4
+
+    else:
+        a = (-27 * mu**8 + 12 * mu**6 + 10 * mu**4 - 44 * mu**2 - 15) / (
+            32 * mu**6 * (3 * mu**2 + 1)
+        )
+        b = (
+            -45.0 * mu**10
+            - 195.0 * mu**8
+            + 462.0 * mu**6
+            + 426.0 * mu**4
+            + 111.0 * mu**2
+            + 9.0
+        ) / (128 * mu**8 * (3 * mu**2 + 1))
+
+        lagrangian_amplitude = (a * sh2 + b * sh4)
+
+    return lagrangian_amplitude

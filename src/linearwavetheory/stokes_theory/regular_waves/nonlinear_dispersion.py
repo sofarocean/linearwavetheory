@@ -1,12 +1,10 @@
 import numpy as np
-
-from linearwavetheory.settings import _parse_options
 from linearwavetheory.stokes_theory.regular_waves.settings import _DEFAULT_ORDER
 from linearwavetheory.stokes_theory.regular_waves.mean_properties import (
     dimensionless_stokes_drift,
 )
 from linearwavetheory.dispersion import intrinsic_dispersion_relation
-
+from .settings import ReferenceFrame
 
 def nonlinear_dispersion_relation(steepness, wavenumber, depth, height=0, **kwargs):
 
@@ -23,10 +21,10 @@ def nonlinear_dispersion_relation(steepness, wavenumber, depth, height=0, **kwar
 
 
 def dimensionless_nonlinear_dispersion_relation(
-    steepness, relative_depth, relative_height=0, **kwargs
+    steepness, relative_depth, relative_height=0,reference_frame:ReferenceFrame=ReferenceFrame.eulerian, **kwargs
 ):
     """
-    This function calculates the nonlinear dispersion relation for a third order Stokes wave.
+    This function calculates the nonlinear dispersion relation for a fourth order Stokes wave.
     :param steepness:
     :param wavenumber:
     :param kwargs:
@@ -34,16 +32,11 @@ def dimensionless_nonlinear_dispersion_relation(
     """
 
     order = kwargs.get("order", _DEFAULT_ORDER)
-    _, physics_options, nonlinear_options = _parse_options(
-        kwargs.get("physics_options", None),
-        kwargs.get("numerical_options", None),
-        kwargs.get("nonlinear_options", None),
-    )
 
     # In a Lagrangian reference frame we need to take into account the Stokes drift.
-    if nonlinear_options.reference_frame == "eulerian":
+    if reference_frame == ReferenceFrame.eulerian:
         us = 0.0
-    elif nonlinear_options.reference_frame == "lagrangian":
+    elif reference_frame == ReferenceFrame.lagrangian:
         us = dimensionless_stokes_drift(steepness, relative_depth, relative_height)
     else:
         raise ValueError("Invalid reference frame")

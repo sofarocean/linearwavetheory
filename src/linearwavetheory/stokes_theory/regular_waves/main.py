@@ -1,3 +1,11 @@
+"""
+
+References
+----------
+Zhao, K., & Liu, P. L. F. (2022). On Stokes wave solutions. Proceedings of the Royal Society A, 478(2258), 20210732.
+"""
+
+
 import numpy as np
 
 from linearwavetheory import intrinsic_dispersion_relation
@@ -77,11 +85,15 @@ def dimensionless_lagrangian_free_surface_elevation(
     steepness, wavenumber, depth, time, xcoordinate, relative_phase_offset=0, **kwargs
 ):
     """
-    This function calculates the surface elevation of a third order Stokes wave.
+    This function calculates the surface elevation of a fourth order Stokes wave in a Lagrangian reference frame. The
+    output is scaled by the wavenumber to give a dimensionless value.
 
-    :param steepness: steepness (wave amplitude times wavenumber)
-    :param wavenumber: wavenumber
-    :param depth: depth
+    :param steepness:  steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber (rad/m)
+    :param depth: depth (m)
+    :param time: time (s)
+    :param xcoordinate: location (m)
+    :param relative_phase_offset: relative offset to the phase [0..1], default is 0
     :param kwargs:
     :return:
     """
@@ -299,7 +311,7 @@ def vertical_particle_displacement(
 
     return a1 * np.cos(
         phase
-    )  # +  a2 * np.cos(2 * phase) + a3 * np.cos(3 * phase) + a4 * np.cos(4 * phase)
+    )   +  a2 * np.cos(2 * phase) + a3 * np.cos(3 * phase) + a4 * np.cos(4 * phase)
 
 
 def vertical_particle_location(
@@ -472,7 +484,8 @@ def dimensionless_velocity(
     **kwargs
 ):
     """
-    This function calculates the surface elevation of a third order Stokes wave.
+    This function calculates the dimensionless velocity in a Stokes waves. Implementation is valid up to the 5-th order
+    and is based on
 
     :param steepness: steepness (wave amplitude times wavenumber)
     :param wavenumber: wavenumber
