@@ -13,17 +13,17 @@ Example that calculates the wavenumber for a range of frequencies for a water de
 approximations of the dispersion relation.
     ```python
     >>> from linearwavetheory import inverse_intrinsic_dispersion_relation
+    >>> from linearwavetheory.settings import physics_options
     >>> import numpy as np
     >>> import matplotlib.pyplot as plt
     >>> f = np.linspace(0., 20, 1001)
     >>> w = 2 * np.pi * f
     >>> depth = 100
-
     >>> k1 = inverse_intrinsic_dispersion_relation(w, depth)
-    >>> k2 = inverse_intrinsic_dispersion_relation(w, depth,wave_type='gravity')
-    >>> k3 = inverse_intrinsic_dispersion_relation(w, depth,wave_regime='deep')
-    >>> k4 = inverse_intrinsic_dispersion_relation(w, depth,wave_regime='shallow')
-    >>> k5 = inverse_intrinsic_dispersion_relation(w, depth,wave_type='capillary')
+    >>> k2 = inverse_intrinsic_dispersion_relation(w, depth, physics_options(wave_type='gravity'))
+    >>> k3 = inverse_intrinsic_dispersion_relation(w, depth, physics_options(wave_regime='deep'))
+    >>> k4 = inverse_intrinsic_dispersion_relation(w, depth, physics_options(wave_regime='shallow'))
+    >>> k5 = inverse_intrinsic_dispersion_relation(w, depth, physics_options(wave_type='capillary'))
     >>> plt.plot(f, k1, label='with surface tension')
     >>> plt.plot(f, k2, label='without surface tension')
     >>> plt.plot(f, k3, label='deep water limit')

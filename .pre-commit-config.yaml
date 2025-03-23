@@ -16,10 +16,10 @@ repos:
     rev: 22.3.0
     hooks:
     - id: black
-      language_version: python3.9
+      language_version: python3.12
 
 # checker
   - repo: https://github.com/pycqa/flake8
-    rev: 3.8.4
+    rev: 7.1.0
     hooks:
     - id: flake8

@@ -8,3 +8,12 @@ def get_wave_regime(**kwargs):
         kwargs.get("nonlinear_options", None),
     )
     return physics_options.wave_regime
+
+
+def _largest_size(*args):
+    """
+    Returns the largest size from a list of sizes.
+    :param *nargs: list of sizes
+    :return: largest size
+    """
+    return max([len(arg) for arg in args])

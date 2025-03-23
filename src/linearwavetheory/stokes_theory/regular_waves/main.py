@@ -5,75 +5,78 @@ References
 Zhao, K., & Liu, P. L. F. (2022). On Stokes wave solutions. Proceedings of the Royal Society A, 478(2258), 20210732.
 """
 
-
 import numpy as np
 
 from linearwavetheory import intrinsic_dispersion_relation
 from linearwavetheory.stokes_theory.regular_waves.eularian_velocity_amplitudes import (
-    dimensionless_velocity_amplitude_first_harmonic,
-    dimensionless_velocity_amplitude_second_harmonic,
-    dimensionless_velocity_amplitude_third_harmonic,
-    dimensionless_velocity_amplitude_fourth_harmonic,
-    dimensionless_velocity_amplitude_fifth_harmonic,
     dimensionless_horizontal_velocity_amplitude,
     dimensionless_vertical_velocity_amplitude,
 )
-
 from linearwavetheory.stokes_theory.regular_waves.settings import _DEFAULT_ORDER
-from linearwavetheory.settings import _parse_options, stokes_theory_options
 from linearwavetheory.stokes_theory.regular_waves.eulerian_elevation_amplitudes import (
-    dimensionless_surface_amplitude_first_harmonic,
-    dimensionless_surface_amplitude_second_harmonic,
-    dimensionless_surface_amplitude_third_harmonic,
-    dimensionless_surface_amplitude_fourth_harmonic,
-    dimensionless_surface_amplitude_fifth_harmonic,
-    dimensionless_material_surface_amplitude_first_harmonic,
-    dimensionless_material_surface_amplitude_second_harmonic,
-    dimensionless_material_surface_amplitude_third_harmonic,
-    dimensionless_material_surface_amplitude_fourth_harmonic,
+    dimensionless_surface_amplitude,
+    dimensionless_material_surface_amplitude,
 )
 from linearwavetheory.stokes_theory.regular_waves.lagrangian_displacement_amplitudes import (
-    lagrangian_dimensionless_vertical_displacement_amplitude_first_harmonic,
-    lagrangian_dimensionless_vertical_displacement_amplitude_second_harmonic,
-    lagrangian_dimensionless_vertical_displacement_amplitude_third_harmonic,
-    lagrangian_dimensionless_horizontal_displacement_first_harmonic,
-    lagrangian_dimensionless_horizontal_displacement_second_harmonic,
-    lagrangian_dimensionless_horizontal_displacement_third_harmonic,
-    lagrangian_dimensionless_vertical_displacement_amplitude_fourth_harmonic,
-    x44,
+    dimensionless_vertical_displacement_amplitude,
+    dimensionless_horizontal_displacement_amplitude,
 )
 from linearwavetheory.stokes_theory.regular_waves.mean_properties import (
     dimensionless_lagrangian_setup,
     dimensionless_lagrangian_mean_location,
 )
 from linearwavetheory.stokes_theory.regular_waves.phase import (
-    phase_function,
     dimensionless_phase_function,
 )
+from .settings import ReferenceFrame
 
 
 def free_surface_elevation(
-    steepness, wavenumber, depth, time, xcoordinate, relative_phase_offset=0, **kwargs
+    steepness,
+    wavenumber,
+    depth,
+    time,
+    x,
+    relative_phase_offset=0,
+    reference_frame: ReferenceFrame = ReferenceFrame.eulerian,
+    **kwargs
 ):
-    _, _, nonlinear_options = _parse_options(
-        None, None, kwargs.get("nonlinear_options", None)
-    )
+    """
+    This function calculates the free surface elevation of a fourth order Stokes wave in a given reference frame.
+
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber (rad/m)
+    :param depth: depth (m)
+    :param time: time (s)
+    :param x: horizontal position (m). For the Eulerian case this is just the horizontal position we evalutate at.
+        For the Lagrangian case this is the mean horizontal position of the particle at t=0.
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
+    :param reference_frame: either 'eulerian' or 'lagrangian', default is 'eulerian'.
+    :param kwargs:
+    :return: Free surface elevation (m) as a function of time in the given reference frame.
+    """
 
     # In a Lagrangian reference frame we need to take into account the Stokes drift.
-    if nonlinear_options.reference_frame == "eulerian":
+    if reference_frame == ReferenceFrame.eulerian:
         elevation = dimensionless_eulerian_free_surface_elevation
-    elif nonlinear_options.reference_frame == "lagrangian":
-        elevation = dimensionless_eulerian_free_surface_elevation
+    elif reference_frame == ReferenceFrame.lagrangian:
+        elevation = dimensionless_lagrangian_free_surface_elevation
     else:
         raise ValueError("Invalid reference frame")
+
+    w0 = intrinsic_dispersion_relation(
+        wavenumber, depth, kwargs.get("physics_options", None)
+    )
+    relative_depth = wavenumber * depth
+    relative_time = w0 * time
+    relative_x = wavenumber * x
 
     return (
         elevation(
             steepness,
-            wavenumber,
-            depth,
-            time,
-            xcoordinate,
+            relative_depth,
+            relative_time,
+            relative_x,
             relative_phase_offset,
             **kwargs
         )
@@ -82,81 +85,67 @@ def free_surface_elevation(
 
 
 def dimensionless_lagrangian_free_surface_elevation(
-    steepness, wavenumber, depth, time, xcoordinate, relative_phase_offset=0, **kwargs
+    steepness,
+    relative_depth,
+    relative_time,
+    relative_x,
+    relative_phase_offset=0,
+    **kwargs
 ):
-    """
-    This function calculates the surface elevation of a fourth order Stokes wave in a Lagrangian reference frame. The
-    output is scaled by the wavenumber to give a dimensionless value.
-
-    :param steepness:  steepness (wave amplitude times wavenumber)
-    :param wavenumber: wavenumber (rad/m)
-    :param depth: depth (m)
-    :param time: time (s)
-    :param xcoordinate: location (m)
-    :param relative_phase_offset: relative offset to the phase [0..1], default is 0
-    :param kwargs:
-    :return:
-    """
-    height = 0
-    return vertical_particle_displacement(
+    return dimensionless_vertical_particle_location(
         steepness,
-        wavenumber,
-        depth,
-        time,
-        xcoordinate,
-        height,
+        relative_depth,
+        relative_time,
+        relative_x,
+        0,
         relative_phase_offset,
         **kwargs
     )
 
 
 def dimensionless_eulerian_free_surface_elevation(
-    steepness, wavenumber, depth, time, xcoordinate, relative_phase_offset=0, **kwargs
+    steepness,
+    relative_depth,
+    relative_time,
+    relative_x,
+    relative_phase_offset=0,
+    **kwargs
 ):
     """
-    This function calculates the surface elevation of a third order Stokes wave.
+    This function calculates the surface elevation of a fifth order Stokes wave (default =4).
 
     :param steepness: steepness (wave amplitude times wavenumber)
-    :param wavenumber: wavenumber
-    :param depth: depth
+    :param relative_depth: relative depth (dimensionless), typically kd where k is the wavenumber and d is the water
+        depth
+    :param relative_time: relative time (dimensionless), typically omega*t where omega is the angular frequency
+    :param relative_x: relative horizontal position (dimensionless), typically k*x where k is the wavenumber and x is
+        the horizontal position
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
     :param kwargs:
-    :return:
+    :return: surface elevation (dimensionless)
     """
 
-    phase = phase_function(
+    phase = dimensionless_phase_function(
         steepness,
-        wavenumber,
-        depth,
-        time,
-        xcoordinate,
+        relative_depth,
+        relative_time,
+        relative_x,
         0,
         relative_phase_offset,
+        reference_frame=ReferenceFrame.eulerian,
         **kwargs
     )
 
-    a1 = dimensionless_surface_amplitude_first_harmonic(
-        steepness, wavenumber, depth, **kwargs
-    )
-    a2 = dimensionless_surface_amplitude_second_harmonic(
-        steepness, wavenumber, depth, **kwargs
-    )
-    a3 = dimensionless_surface_amplitude_third_harmonic(
-        steepness, wavenumber, depth, **kwargs
-    )
-    a4 = dimensionless_surface_amplitude_fourth_harmonic(
-        steepness, wavenumber, depth, **kwargs
-    )
-    a5 = dimensionless_surface_amplitude_fifth_harmonic(
-        steepness, wavenumber, depth, **kwargs
-    )
+    phase = np.atleast_1d(phase)
+    out = np.zeros(len(phase))
 
-    return (
-        a1 * np.cos(phase)
-        + a2 * np.cos(2 * phase)
-        + a3 * np.cos(3 * phase)
-        + a4 * np.cos(4 * phase)
-        + a5 * np.cos(5 * phase)
-    )
+    for harmonic_number in range(1, 5):
+        amplitude = dimensionless_surface_amplitude(
+            steepness, relative_depth, harmonic_number, **kwargs
+        )
+        out += amplitude * np.cos(harmonic_number * phase)
+
+    return out
 
 
 def material_surface_vertical_elevation(
@@ -164,317 +153,404 @@ def material_surface_vertical_elevation(
     wavenumber,
     depth,
     time,
-    xcoordinate,
-    height,
+    x,
+    z,
     relative_phase_offset=0,
+    reference_frame: ReferenceFrame = ReferenceFrame.eulerian,
     **kwargs
 ):
-    _, _, nonlinear_options = _parse_options(
-        None, None, kwargs.get("nonlinear_options", None)
-    )
 
-    if nonlinear_options.reference_frame == "eulerian":
-        elevation = eulerian_dimensionless_material_surface_vertical_displacement
-    elif nonlinear_options.reference_frame == "lagrangian":
-        raise ValueError(
-            "Material surface elevation not implemented in Lagrangian reference frame"
-        )
+    if reference_frame == ReferenceFrame.eulerian:
+        location = eulerian_dimensionless_material_surface_vertical_location
+    elif reference_frame == ReferenceFrame.lagrangian:
+        location = dimensionless_vertical_particle_location
     else:
         raise ValueError("Invalid reference frame")
 
+    relative_depth = wavenumber * depth
+    relative_time = (
+        intrinsic_dispersion_relation(
+            wavenumber, depth, kwargs.get("physics_options", None)
+        )
+        * time
+    )
+    relative_x = wavenumber * x
+    relative_z = wavenumber * z
+
     return (
-        elevation(
+        location(
             steepness,
-            wavenumber,
-            depth,
-            time,
-            xcoordinate,
-            height,
+            relative_depth,
+            relative_time,
+            relative_x,
+            relative_z,
             relative_phase_offset,
             **kwargs
         )
         / wavenumber
-        + height
     )
 
 
 def eulerian_dimensionless_material_surface_vertical_displacement(
     steepness,
-    wavenumber,
-    depth,
-    time,
-    xcoordinate,
-    height,
+    relative_depth,
+    relative_time,
+    relative_x,
+    relative_z,
     relative_phase_offset=0,
     **kwargs
 ):
-    """
-    This function calculates the surface elevation of a third order Stokes wave.
 
-    :param steepness: steepness (wave amplitude times wavenumber)
-    :param wavenumber: wavenumber
-    :param depth: depth
-    :param kwargs:
-    :return:
-    """
-
-    phase = phase_function(
-        steepness, wavenumber, depth, time, xcoordinate, relative_phase_offset, **kwargs
-    )
-
-    a1 = dimensionless_material_surface_amplitude_first_harmonic(
-        steepness, wavenumber, depth, height, **kwargs
-    )
-    a2 = dimensionless_material_surface_amplitude_second_harmonic(
-        steepness, wavenumber, depth, height, **kwargs
-    )
-    a3 = dimensionless_material_surface_amplitude_third_harmonic(
-        steepness, wavenumber, depth, height, **kwargs
-    )
-    a4 = dimensionless_material_surface_amplitude_fourth_harmonic(
-        steepness, wavenumber, depth, height, **kwargs
-    )
-    return (
-        a1 * np.cos(phase)
-        + a2 * np.cos(2 * phase)
-        + a3 * np.cos(3 * phase)
-        + a4 * np.cos(4 * phase)
-    )
-
-
-def vertical_particle_displacement(
-    steepness,
-    wavenumber,
-    depth,
-    time,
-    xcoordinate,
-    height,
-    relative_phase_offset=0,
-    **kwargs
-):
-    """
-    This function calculates the surface elevation of a third order Stokes wave.
-
-    :param steepness: steepness (wave amplitude times wavenumber)
-    :param wavenumber: wavenumber
-    :param depth: depth
-    :param kwargs:
-    :return:
-    """
-
-    # For convinience set the default to lagrangian reference frame - otherwise raise an error
-    _nonlinear_options = kwargs.get("nonlinear_options", None)
-    if _nonlinear_options is None:
-        _nonlinear_options = stokes_theory_options(reference_frame="lagrangian")
-    else:
-        if not _nonlinear_options.reference_frame == "lagrangian":
-            raise ValueError("Invalid reference frame")
-    kwargs["nonlinear_options"] = _nonlinear_options
-
-    phase = phase_function(
+    phase = dimensionless_phase_function(
         steepness,
-        wavenumber,
-        depth,
-        time,
-        xcoordinate,
-        height,
+        relative_depth,
+        relative_time,
+        relative_x,
+        relative_z,
+        relative_phase_offset,
+        reference_frame=ReferenceFrame.eulerian,
+        **kwargs
+    )
+
+    phase = np.atleast_1d(phase)
+    out = np.zeros(len(phase))
+    order = kwargs.get("order", _DEFAULT_ORDER)
+    if order > 4:
+        raise ValueError("Order > 4 not implemented for material surface elevation")
+
+    for harmonic_number in range(1, order + 1):
+        amplitude = dimensionless_material_surface_amplitude(
+            steepness, relative_depth, relative_z, harmonic_number, **kwargs
+        )
+        out += amplitude * np.cos(harmonic_number * phase)
+
+    return out
+
+
+def eulerian_dimensionless_material_surface_vertical_location(
+    steepness,
+    relative_depth,
+    relative_time,
+    relative_x,
+    relative_z,
+    relative_phase_offset=0,
+    **kwargs
+):
+
+    displacement = eulerian_dimensionless_material_surface_vertical_displacement(
+        steepness,
+        relative_depth,
+        relative_time,
+        relative_x,
+        relative_z,
         relative_phase_offset,
         **kwargs
     )
 
-    scaling_factor = 1 / wavenumber
-    a1 = (
-        scaling_factor
-        * lagrangian_dimensionless_vertical_displacement_amplitude_first_harmonic(
-            steepness, wavenumber, depth, height, **kwargs
-        )
-    )
-    a2 = (
-        scaling_factor
-        * lagrangian_dimensionless_vertical_displacement_amplitude_second_harmonic(
-            steepness, wavenumber, depth, height, **kwargs
-        )
-    )
-    a3 = (
-        scaling_factor
-        * lagrangian_dimensionless_vertical_displacement_amplitude_third_harmonic(
-            steepness, wavenumber, depth, height, **kwargs
-        )
-    )
-
-    a4 = (
-        scaling_factor
-        * lagrangian_dimensionless_vertical_displacement_amplitude_fourth_harmonic(
-            steepness, wavenumber, depth, height, **kwargs
-        )
-    )
-
-    return a1 * np.cos(
-        phase
-    )   +  a2 * np.cos(2 * phase) + a3 * np.cos(3 * phase) + a4 * np.cos(4 * phase)
+    return displacement + relative_z
 
 
-def vertical_particle_location(
-    steepness,
-    wavenumber,
-    depth,
-    time,
-    xcoordinate,
-    height,
-    relative_phase_offset=0,
-    **kwargs
+def vertical_particle_displacement(
+    steepness, wavenumber, depth, time, x, z, relative_phase_offset=0, **kwargs
 ):
-    # For convinience set the default to lagrangian reference frame - otherwise raise an error
-    _nonlinear_options = kwargs.get("nonlinear_options", None)
-    if _nonlinear_options is None:
-        _nonlinear_options = stokes_theory_options(reference_frame="lagrangian")
-    else:
-        if not _nonlinear_options.reference_frame == "lagrangian":
-            raise ValueError("Invalid reference frame")
-    kwargs["nonlinear_options"] = _nonlinear_options
+    """
+    This function calculates the vertical particle displacement of a fourth order Stokes wave. The particle is
+    identified with x,z where x is the mean horizontal position at t=0 and z is the mean vertical position of the
+    material surface the particle is located on. The function returns the vertical displacement of the particle at time
+    t.
 
-    setup = (
-        dimensionless_lagrangian_setup(
-            steepness, wavenumber * depth, wavenumber * height, **kwargs
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber
+    :param depth: depth (m)
+    :param time: (time in seconds)
+    :param x: mean horizontal position (m) of the particle at t=0
+    :param z: mean vertical position (m) of the material surface the partical is located on.
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
+    :param kwargs:
+    :return: vertical particle displacement (m)
+    """
+
+    w0 = intrinsic_dispersion_relation(
+        wavenumber, depth, kwargs.get("physics_options", None)
+    )
+    return (
+        dimensionless_vertical_particle_displacement(
+            steepness,
+            wavenumber * depth,
+            w0 * time,
+            wavenumber * x,
+            wavenumber * z,
+            relative_phase_offset,
+            **kwargs
         )
         / wavenumber
     )
 
+
+def dimensionless_vertical_particle_displacement(
+    steepness,
+    relative_depth,
+    relative_time,
+    relative_x,
+    relative_z,
+    relative_phase_offset=0,
+    **kwargs
+):
+    """
+    This function calculates the vertical particle displacement of a fourth order Stokes wave. The particle is
+    identified with x,z where x is the mean horizontal position at t=0 and z is the mean vertical position of the
+    material surface the particle is located on. The function returns the vertical displacement of the particle at time
+    t.
+
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param relative_depth: relative depth (dimensionless), typically kd where k is the wavenumber and d is the water
+        depth
+    :param relative_time: relative time (dimensionless), typically omega*t where omega is the angular frequency
+    :param relative_x: relative horizontal position (dimensionless), typically k*x where k is the wavenumber and x
+        is the horizontal position
+    :param relative_z: relative height in the water column (dimensionless), typically k*z where z is the height in the
+        water column
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
+    :param kwargs:
+    :return: vertical particle displacement (dimensionless)
+    """
+
+    phase = dimensionless_phase_function(
+        steepness,
+        relative_depth,
+        relative_time,
+        relative_x,
+        relative_z,
+        relative_phase_offset,
+        reference_frame=ReferenceFrame.lagrangian,
+        **kwargs
+    )
+
+    phase = np.atleast_1d(phase)
+    out = np.zeros(len(phase))
+
+    for harmonic_number in range(1, 5):
+        amplitude = dimensionless_vertical_displacement_amplitude(
+            steepness, relative_depth, relative_z, harmonic_number, **kwargs
+        )
+        out += amplitude * np.cos(harmonic_number * phase)
+
+    return out
+
+
+def vertical_particle_location(
+    steepness, wavenumber, depth, time, x, z, relative_phase_offset=0, **kwargs
+):
+    """
+    This function calculates the vertical particle location of a fourth order Stokes wave. The particle is identified
+    with x,z where x is the mean horizontal position at t=0 and z is the mean vertical position of the material
+    surface the particle is located on. The function returns the vertical location of the particle at time t.
+
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber
+    :param depth: depth (m)
+    :param time: (time in seconds)
+    :param x: mean horizontal position (m) of the particle at t=0
+    :param z: mean vertical position (m) of the material surface the partical is located on.
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
+    :param kwargs:
+    :return: vertical particle location (m) at time t
+    """
+
+    w0 = intrinsic_dispersion_relation(
+        wavenumber, depth, kwargs.get("physics_options", None)
+    )
     return (
-        vertical_particle_displacement(
+        dimensionless_vertical_particle_location(
             steepness,
-            wavenumber,
-            depth,
-            time,
-            xcoordinate,
-            height,
+            wavenumber * depth,
+            w0 * time,
+            wavenumber * x,
+            wavenumber * z,
             relative_phase_offset,
             **kwargs
         )
-        + height
+        / wavenumber
+    )
+
+
+def dimensionless_vertical_particle_location(
+    steepness,
+    relative_depth,
+    relative_time,
+    relative_x,
+    relative_z,
+    relative_phase_offset=0,
+    **kwargs
+):
+    """
+    This function calculates the vertical particle location of a fourth order Stokes wave. The particle is identified
+    with x,z where x is the mean horizontal position at t=0 and z is the mean vertical position of the material
+    surface the particle is located on. The function returns the vertical location of the particle at time t.
+
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param relative_depth: relative depth (dimensionless), typically kd where k is the wavenumber and d is the water
+        depth
+    :param relative_time: relative time (dimensionless), typically omega*t where omega is the angular frequency
+    :param relative_x: relative horizontal position (dimensionless), typically k*x where k is the wavenumber and x is
+        the horizontal position
+    :param relative_z: relative height in the water column (dimensionless), typically k*z where z is the height in the
+        water column
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
+    :param kwargs:
+    :return: vertical particle displacement (dimensionless)
+    """
+
+    setup = dimensionless_lagrangian_setup(
+        steepness, relative_depth, relative_z, **kwargs
+    )
+
+    return (
+        dimensionless_vertical_particle_displacement(
+            steepness,
+            relative_depth,
+            relative_time,
+            relative_x,
+            relative_z,
+            relative_phase_offset,
+            **kwargs
+        )
+        + relative_z
         + setup
     )
 
 
 def horizontal_particle_displacement(
-    steepness,
-    wavenumber,
-    depth,
-    time,
-    xcoordinate,
-    height,
-    relative_phase_offset=0,
-    **kwargs
+    steepness, wavenumber, depth, time, x, z, relative_phase_offset=0, **kwargs
 ):
     """
-    This function calculates the surface elevation of a third order Stokes wave.
+    This function calculates the horizontal particle displacement of a fourth order Stokes wave. The particle is
+    identified with x,z where x is the mean horizontal position at t=0 and z is the mean vertical position of the
+    material surface the particle is located on. The function returns the horizontal displacement of the particle at
+    time t.
 
     :param steepness: steepness (wave amplitude times wavenumber)
     :param wavenumber: wavenumber
-    :param depth: depth
+    :param depth: depth (m)
+    :param time: (time in seconds)
+    :param x: mean horizontal position (m) of the particle at t=0
+    :param z: mean vertical position (m) of the material surface the partical is located on.
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
     :param kwargs:
-    :return:
+    :return: vertical particle displacement (m)
     """
 
-    # For convinience set the default to lagrangian reference frame - otherwise raise an error
-    _nonlinear_options = kwargs.get("nonlinear_options", None)
-    if _nonlinear_options is None:
-        _nonlinear_options = stokes_theory_options(reference_frame="lagrangian")
-    else:
-        if not _nonlinear_options.reference_frame == "lagrangian":
-            raise ValueError("Invalid reference frame")
-    kwargs["nonlinear_options"] = _nonlinear_options
-
-    phase = phase_function(
-        steepness,
-        wavenumber,
-        depth,
-        time,
-        xcoordinate,
-        height,
-        relative_phase_offset,
-        **kwargs
+    w0 = intrinsic_dispersion_relation(
+        wavenumber, depth, kwargs.get("physics_options", None)
     )
-
-    scaling_factor = 1 / wavenumber
-    a1 = (
-        scaling_factor
-        * lagrangian_dimensionless_horizontal_displacement_first_harmonic(
-            steepness, wavenumber, depth, height, **kwargs
-        )
-    )
-    a2 = (
-        scaling_factor
-        * lagrangian_dimensionless_horizontal_displacement_second_harmonic(
-            steepness, wavenumber, depth, height, **kwargs
-        )
-    )
-    a3 = (
-        scaling_factor
-        * lagrangian_dimensionless_horizontal_displacement_third_harmonic(
-            steepness, wavenumber, depth, height, **kwargs
-        )
-    )
-
-    if kwargs.get("order", _DEFAULT_ORDER) == 4:
-        a4 = (
-            scaling_factor
-            * steepness**4
-            * x44(wavenumber * depth, wavenumber * height, **kwargs)
-        )
-    else:
-        a4 = 0
-
     return (
-        a1 * np.sin(phase)
-        + a2 * np.sin(2 * phase)
-        + a3 * np.sin(3 * phase)
-        + a4 * np.sin(4 * phase)
+        dimensionless_horizontal_particle_displacement(
+            steepness,
+            wavenumber * depth,
+            w0 * time,
+            wavenumber * x,
+            wavenumber * z,
+            relative_phase_offset,
+            **kwargs
+        )
+        / wavenumber
     )
 
 
-def horizontal_particle_location(
+def dimensionless_horizontal_particle_displacement(
     steepness,
-    wavenumber,
-    depth,
-    time,
-    xcoordinate,
-    height,
+    relative_depth,
+    relative_time,
+    relative_x,
+    relative_z,
     relative_phase_offset=0,
     **kwargs
 ):
-    # For convinience set the default to lagrangian reference frame - otherwise raise an error
-    _nonlinear_options = kwargs.get("nonlinear_options", None)
-    if _nonlinear_options is None:
-        _nonlinear_options = stokes_theory_options(reference_frame="lagrangian")
-    else:
-        if not _nonlinear_options.reference_frame == "lagrangian":
-            raise ValueError("Invalid reference frame")
-    kwargs["nonlinear_options"] = _nonlinear_options
+    """
+    This function calculates the vertical particle displacement of a fourth order Stokes wave. The particle is
+    identified with x,z where x is the mean horizontal position at t=0 and z is the mean vertical position of the
+    material surface the particle is located on. The function returns the vertical displacement of the particle at time
+    t.
 
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param relative_depth: relative depth (dimensionless), typically kd where k is the wavenumber and d is the water
+        depth
+    :param relative_time: relative time (dimensionless), typically omega*t where omega is the angular frequency
+    :param relative_x: relative horizontal position (dimensionless), typically k*x where k is the wavenumber and x is
+        the horizontal position
+    :param relative_z: relative height in the water column (dimensionless), typically k*z where z is the height in the
+        water column
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
+    :param kwargs:
+    :return: vertical particle displacement (dimensionless)
+    """
+
+    phase = dimensionless_phase_function(
+        steepness,
+        relative_depth,
+        relative_time,
+        relative_x,
+        relative_z,
+        relative_phase_offset,
+        reference_frame=ReferenceFrame.lagrangian,
+        **kwargs
+    )
+
+    phase = np.atleast_1d(phase)
+    out = np.zeros(len(phase))
+
+    for harmonic_number in range(1, 5):
+        amplitude = dimensionless_horizontal_displacement_amplitude(
+            steepness, relative_depth, relative_z, harmonic_number, **kwargs
+        )
+        out += amplitude * np.sin(harmonic_number * phase)
+
+    return out
+
+
+def horizontal_particle_location(
+    steepness, wavenumber, depth, time, x, z, relative_phase_offset=0, **kwargs
+):
+    """
+    This function calculates the horizontal particle location of a fourth order Stokes wave. The particle is identified
+    with x,z where x is the mean horizontal position at t=0 and z is the mean vertical position of the material
+    surface the particle is located on. The function returns the horizontal location of the particle at time t.
+
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber
+    :param depth: depth (m)
+    :param time: (time in seconds)
+    :param x: mean horizontal position (m) of the particle at t=0
+    :param z: mean vertical position (m) of the material surface the partical is located on.
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
+    :param kwargs:
+    :return: horizontal particle location (m) at time t
+    """
+
+    w0 = intrinsic_dispersion_relation(
+        wavenumber, depth, kwargs.get("physics_options", None)
+    )
     xmean = (
         dimensionless_lagrangian_mean_location(
-            steepness, wavenumber, depth, time, xcoordinate, height, **kwargs
+            steepness,
+            wavenumber * depth,
+            w0 * time,
+            wavenumber * x,
+            wavenumber * z,
+            **kwargs
         )
         / wavenumber
     )
 
     return (
         horizontal_particle_displacement(
-            steepness,
-            wavenumber,
-            depth,
-            time,
-            xcoordinate,
-            height,
-            relative_phase_offset,
-            **kwargs
+            steepness, wavenumber, depth, time, x, z, relative_phase_offset, **kwargs
         )
         + xmean
     )
 
 
-def dimensionless_velocity(
+def dimensionless_horizontal_velocity(
     steepness,
     relative_depth,
     relative_time,
@@ -484,14 +560,20 @@ def dimensionless_velocity(
     **kwargs
 ):
     """
-    This function calculates the dimensionless velocity in a Stokes waves. Implementation is valid up to the 5-th order
-    and is based on
+    This function calculates the dimensionless velocity in a Stokes waves in a Eulerian reference frame.
+    Implementation is valid up to the 5-th order and is based on the work of Zhao and Liu (2022).
 
-    :param steepness: steepness (wave amplitude times wavenumber)
-    :param wavenumber: wavenumber
-    :param depth: depth
+    :param steepness: wave steepness (dimensionless)
+    :param relative_depth: relative depth (dimensionless), typically kd where k is the wavenumber and d is the water
+        depth
+    :param relative_time: relative time (dimensionless), typically omega*t where omega is the angular frequency
+    :param relative_x: relative horizontal position (dimensionless), typically k*x where k is the wavenumber and x is
+        the horizontal position
+    :param relative_height: relative height in the water column (dimensionless), typically k*z where z is the height in
+        the water column
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
     :param kwargs:
-    :return:
+    :return: dimensionless velocity
     """
 
     order = kwargs.get("order", _DEFAULT_ORDER)
@@ -502,17 +584,18 @@ def dimensionless_velocity(
         relative_x,
         relative_height,
         relative_phase_offset,
+        reference_frame=ReferenceFrame.eulerian,
         **kwargs
     )
 
     # Sum the harmonices to the desired order
+    phase = np.atleast_1d(phase)
     result = np.zeros_like(phase)
-    for iorder in range(1, order + 1):
-        harmonic = np.cos(iorder * phase)
+    for harmonic_number in range(1, order + 1):
         amplitude = dimensionless_horizontal_velocity_amplitude(
-            steepness, relative_depth, relative_height, iorder, **kwargs
+            steepness, relative_depth, relative_height, harmonic_number, **kwargs
         )
-        result += amplitude * harmonic
+        result += amplitude * np.cos(harmonic_number * phase)
 
     return result
 
@@ -521,127 +604,121 @@ def horizontal_velocity(
     steepness, wavenumber, depth, time, x, z, relative_phase_offset=0, **kwargs
 ):
     """
-    This function calculates the surface elevation of a third order Stokes wave.
+    This function calculates the velocity in a Stokes waves in a Eulerian reference frame.
+    Implementation is valid up to the 5-th order and is based on the work of Zhao and Liu (2022).
 
-    :param steepness: steepness (wave amplitude times wavenumber)
-    :param wavenumber: wavenumber
-    :param depth: depth
+    :param steepness: wave steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber (rad/m)
+    :param depth: depth (m)
+    :param time: time (s)
+    :param x: horizontal position (m)
+    :param z: height in the water column (m)
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
     :param kwargs:
-    :return:
+    :return: velocity (m/s)
     """
-
-    def ch(m):
-        return np.cosh(m * wavenumber * (depth + z)) / np.cosh(m * wavenumber * depth)
 
     angular_frequency = intrinsic_dispersion_relation(
         wavenumber, depth, kwargs.get("physics_options", None)
     )
-    phase = phase_function(
-        steepness, wavenumber, depth, time, x, relative_phase_offset, **kwargs
-    )
 
     c = angular_frequency / wavenumber
-    relative_depth = wavenumber * depth
-    a1 = (
-        dimensionless_velocity_amplitude_first_harmonic(
-            steepness, relative_depth, **kwargs
-        )
-        * c
-    )
-    a2 = (
-        dimensionless_velocity_amplitude_second_harmonic(
-            steepness, relative_depth, **kwargs
-        )
-        * c
-    )
-    a3 = (
-        dimensionless_velocity_amplitude_third_harmonic(
-            steepness, relative_depth, **kwargs
-        )
-        * c
-    )
-    a4 = (
-        dimensionless_velocity_amplitude_fourth_harmonic(
-            steepness, relative_depth, **kwargs
-        )
-        * c
-    )
-    a5 = (
-        dimensionless_velocity_amplitude_fifth_harmonic(
-            steepness, relative_depth, **kwargs
+    return (
+        dimensionless_horizontal_velocity(
+            steepness,
+            wavenumber * depth,
+            angular_frequency * time,
+            wavenumber * x,
+            wavenumber * z,
+            relative_phase_offset,
+            **kwargs
         )
         * c
     )
 
-    return (
-        a1 * np.cos(phase) * ch(1)
-        + a2 * np.cos(2 * phase) * ch(2)
-        + a3 * np.cos(3 * phase) * ch(3)
-        + a4 * np.cos(4 * phase) * ch(4)
-        + a5 * np.cos(5 * phase) * ch(5)
+
+def dimensionless_vertical_velocity(
+    steepness,
+    relative_depth,
+    relative_time,
+    relative_x,
+    relative_height,
+    relative_phase_offset=0,
+    **kwargs
+):
+    """
+    This function calculates the dimensionless velocity in a Stokes waves in a Eulerian reference frame.
+    Implementation is valid up to the 5-th order and is based on the work of Zhao and Liu (2022).
+
+    :param steepness: wave steepness (dimensionless)
+    :param relative_depth: relative depth (dimensionless), typically kd where k is the wavenumber and d is the water
+        depth
+    :param relative_time: relative time (dimensionless), typically omega*t where omega is the angular frequency
+    :param relative_x: relative horizontal position (dimensionless), typically k*x where k is the wavenumber and x is
+        the horizontal position
+    :param relative_height: relative height in the water column (dimensionless), typically k*z where z is the height in
+        the water column
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
+    :param kwargs:
+    :return: dimensionless velocity
+    """
+
+    order = kwargs.get("order", _DEFAULT_ORDER)
+    phase = dimensionless_phase_function(
+        steepness,
+        relative_depth,
+        relative_time,
+        relative_x,
+        relative_height,
+        relative_phase_offset,
+        reference_frame=ReferenceFrame.eulerian,
+        **kwargs
     )
+
+    # Sum the harmonices to the desired order
+    phase = np.atleast_1d(phase)
+    result = np.zeros_like(phase)
+    for harmonic_number in range(1, order + 1):
+        amplitude = dimensionless_vertical_velocity_amplitude(
+            steepness, relative_depth, relative_height, harmonic_number, **kwargs
+        )
+        result += amplitude * np.sin(harmonic_number * phase)
+
+    return result
 
 
 def vertical_velocity(
     steepness, wavenumber, depth, time, x, z, relative_phase_offset=0, **kwargs
 ):
     """
-    This function calculates the surface elevation of a third order Stokes wave.
+    This function calculates the velocity in a Stokes waves in a Eulerian reference frame.
+    Implementation is valid up to the 5-th order and is based on the work of Zhao and Liu (2022).
 
-    :param steepness: steepness (wave amplitude times wavenumber)
-    :param wavenumber: wavenumber
-    :param depth: depth
+    :param steepness: wave steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber (rad/m)
+    :param depth: depth (m)
+    :param time: time (s)
+    :param x: horizontal position (m)
+    :param z: height in the water column (m)
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
     :param kwargs:
-    :return:
+    :return: velocity (m/s)
     """
-
-    def sh(m):
-        return np.sinh(m * wavenumber * (depth + z)) / np.cosh(m * wavenumber * depth)
 
     angular_frequency = intrinsic_dispersion_relation(
         wavenumber, depth, kwargs.get("physics_options", None)
     )
-    phase = phase_function(
-        steepness, wavenumber, depth, time, x, relative_phase_offset, **kwargs
-    )
 
     c = angular_frequency / wavenumber
-    relative_depth = wavenumber * depth
-    a1 = (
-        dimensionless_velocity_amplitude_first_harmonic(
-            steepness, relative_depth, **kwargs
-        )
-        * c
-    )
-    a2 = (
-        dimensionless_velocity_amplitude_second_harmonic(
-            steepness, relative_depth, **kwargs
-        )
-        * c
-    )
-    a3 = (
-        dimensionless_velocity_amplitude_third_harmonic(
-            steepness, relative_depth, **kwargs
-        )
-        * c
-    )
-    a4 = (
-        dimensionless_velocity_amplitude_fourth_harmonic(
-            steepness, relative_depth, **kwargs
-        )
-        * c
-    )
-    a5 = (
-        dimensionless_velocity_amplitude_fifth_harmonic(
-            steepness, relative_depth, **kwargs
-        )
-        * c
-    )
-
     return (
-        a1 * np.sin(phase) * sh(1)
-        + a2 * np.sin(2 * phase) * sh(2)
-        + a3 * np.sin(3 * phase) * sh(3)
-        + a4 * np.sin(4 * phase) * sh(4)
-        + a5 * np.sin(5 * phase) * sh(5)
+        dimensionless_vertical_velocity(
+            steepness,
+            wavenumber * depth,
+            angular_frequency * time,
+            wavenumber * x,
+            wavenumber * z,
+            relative_phase_offset,
+            **kwargs
+        )
+        * c
     )

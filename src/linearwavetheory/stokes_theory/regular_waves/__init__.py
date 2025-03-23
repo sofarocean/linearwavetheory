@@ -12,15 +12,10 @@ from .main import (
 from .mean_properties import (
     stokes_drift,
     lagrangian_setup,
-    dimensionless_lagrangian_setup,
-    dimensionless_stokes_drift,
-    dimensionless_trough_height,
-    dimensionless_crest_height,
 )
 
 from .nonlinear_dispersion import (
     nonlinear_dispersion_relation,
-    dimensionless_nonlinear_dispersion_relation,
 )
 
 from linearwavetheory.stokes_theory.regular_waves import (
