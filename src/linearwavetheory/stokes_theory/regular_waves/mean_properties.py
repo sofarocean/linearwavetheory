@@ -214,7 +214,7 @@ def dimensionless_kurtosis(steepness, relative_depth, relative_z, **kwargs):
     if order < 4:
         fourth_order = 0
     else:
-        fourth_order = 3 * factor_fo * eta11**4 / 4
+        fourth_order = 3 * factor_fo * eta11**4 / 8
 
     if order < 6:
         sixth_order = 0

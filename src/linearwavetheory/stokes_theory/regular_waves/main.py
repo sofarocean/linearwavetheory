@@ -138,8 +138,8 @@ def dimensionless_eulerian_free_surface_elevation(
 
     phase = np.atleast_1d(phase)
     out = np.zeros(len(phase))
-
-    for harmonic_number in range(1, 5):
+    order = kwargs.get("order", _DEFAULT_ORDER)
+    for harmonic_number in range(1, order + 1):
         amplitude = dimensionless_surface_amplitude(
             steepness, relative_depth, harmonic_number, **kwargs
         )
@@ -270,8 +270,10 @@ def vertical_particle_displacement(
     :return: vertical particle displacement (m)
     """
 
-    w0 = intrinsic_dispersion_relation(
-        wavenumber, depth, kwargs.get("physics_options", None)
+    w0 = np.squeeze(
+        intrinsic_dispersion_relation(
+            wavenumber, depth, kwargs.get("physics_options", None)
+        )
     )
     return (
         dimensionless_vertical_particle_displacement(
@@ -328,8 +330,8 @@ def dimensionless_vertical_particle_displacement(
 
     phase = np.atleast_1d(phase)
     out = np.zeros(len(phase))
-
-    for harmonic_number in range(1, 5):
+    order = kwargs.get("order", _DEFAULT_ORDER)
+    for harmonic_number in range(1, order + 1):
         amplitude = dimensionless_vertical_displacement_amplitude(
             steepness, relative_depth, relative_z, harmonic_number, **kwargs
         )
@@ -498,8 +500,9 @@ def dimensionless_horizontal_particle_displacement(
 
     phase = np.atleast_1d(phase)
     out = np.zeros(len(phase))
+    order = kwargs.get("order", _DEFAULT_ORDER)
 
-    for harmonic_number in range(1, 5):
+    for harmonic_number in range(1, order + 1):
         amplitude = dimensionless_horizontal_displacement_amplitude(
             steepness, relative_depth, relative_z, harmonic_number, **kwargs
         )
