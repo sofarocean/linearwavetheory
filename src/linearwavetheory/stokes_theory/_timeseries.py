@@ -21,7 +21,7 @@ def surface_time_series(
     self_interactions = kwargs.get("self_interactions", True)
     cross_interactions = kwargs.get("cross_interactions", True)
     physics_options = kwargs.get("physics_options", None)
-    _, physics_options = _parse_options(None, physics_options)
+    _, physics_options, _ = _parse_options(None, physics_options, None)
     grav = physics_options.grav
 
     wavenumber = inverse_intrinsic_dispersion_relation(

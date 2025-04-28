@@ -323,7 +323,7 @@ def _reference_surface_skewness_calculation(
     :param progress_bar: progress bar (optional). Pass a numba progress bar to show progress.
     :return: skewness as ndarray
     """
-    _, physics_options = _parse_options(None, physics_options)
+    _, physics_options, _ = _parse_options(None, physics_options, None)
 
     skewness = _skewness_from_spectra(
         angular_frequency,

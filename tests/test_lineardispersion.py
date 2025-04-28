@@ -184,14 +184,14 @@ def test_intrinsic_phase_speed():
     shallow_water_c = np.sqrt(settings._GRAV * depth)
     c = ld.intrinsic_phase_speed(k, depth)
 
-    # assert_allclose(c, shallow_water_c, atol=0, rtol=settings._RELATIVE_TOLERANCE)
+    assert_allclose(c, shallow_water_c, atol=0, rtol=settings._RELATIVE_TOLERANCE)
 
     # Deep water
     k = np.linspace(0.1, 1, 100)
     depth = np.full(100, 1000.0)
     deep_water_omega = np.sqrt(settings._GRAV / k)
     omega = ld.intrinsic_phase_speed(k, depth)
-    # assert_allclose(omega, deep_water_omega, atol=0, rtol=settings._RELATIVE_TOLERANCE)
+    assert_allclose(omega, deep_water_omega, atol=0, rtol=settings._RELATIVE_TOLERANCE)
 
     # Capillary waves
     k = np.linspace(10000, 100000, 10)

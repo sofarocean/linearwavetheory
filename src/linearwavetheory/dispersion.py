@@ -338,10 +338,9 @@ def intrinsic_phase_speed(
     if np.any(wavenumber_magnitude < 0):
         raise ValueError("Wavenumber magnitude must be positive")
 
-    (
-        numerical_options,
-        physics_options,
-    ) = _parse_options(None, physics_options, _)
+    (numerical_options, physics_options, _) = _parse_options(
+        None, physics_options, None
+    )
 
     # Function pointer would be nicer- but I could not get it to work with numba typing
     args = (
