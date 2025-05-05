@@ -1,5 +1,5 @@
-from numba import vectorize, float64, float32, bool, jit
-from linearwavetheory._numba_settings import numba_default_vectorize, numba_default
+from numba import vectorize, float64, bool
+from linearwavetheory._numba_settings import numba_default_vectorize
 import numpy as np
 
 from linearwavetheory.stokes_theory._second_order_coeficients import (
@@ -396,20 +396,11 @@ def _third_order_amplitude_correction_non_symmetric_sigma_coordinates(
     wave_driven_flow_included_in_mean_flow,
     lagrangian=False,
 ):
-    # read this as "inner product between k1 and k2 plus k3)
-    inner_product_12p3 = kx1 * (kx2 + kx3) + ky1 * (ky2 + ky3)
-
     second_order_potential_23 = _second_order_potential(
         w3, k3, kx3, ky3, w2, k2, kx2, ky2, depth, grav
     )
 
-    inner_product_k23 = kx2 * kx3 + ky2 * ky3
-
     second_order_surface_elevation_23 = _second_order_surface_elevation(
-        w3, k3, kx3, ky3, w2, k2, kx2, ky2, depth, grav
-    )
-
-    second_order_w_23 = _second_order_vertical_velocity(
         w3, k3, kx3, ky3, w2, k2, kx2, ky2, depth, grav
     )
 
@@ -525,6 +516,9 @@ def third_order_amplitude_correction(
             wave_driven_flow_included_in_mean_flow,
             lagrangian,
         )
+        # print(coef,            w[ii1],
+        #     k[ii1],
+        #     kx[ii1])
     return coef
 
 

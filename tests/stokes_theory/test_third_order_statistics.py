@@ -96,7 +96,7 @@ def test_skewness_spectrum():
 
     assert np.isclose(
         skewness / np.sqrt(_var**3), 0.987365, rtol=1e-5, atol=1e-5
-    ), f"Skewness is {skewness/ np.sqrt(_var**3)} and target {0.987365}"
+    ), f"Skewness is {skewness / np.sqrt(_var**3)} and target {0.987365}"
 
     # Test it works for infinite depth
     depth = np.inf
@@ -135,9 +135,11 @@ def test_implementation_consistency():
         )
         i += 1
 
-    skewness_fast_implementation = surface_elevation_skewness(freq, dir, spectra, depth)
+    skewness_fast_implementation = surface_elevation_skewness(
+        freq * 2 * np.pi, dir, spectra / 2 / np.pi, depth
+    )
     skewness_slow_implementation = _reference_surface_skewness_calculation(
-        freq, dir, spectra, depth
+        freq * 2 * np.pi, dir, spectra / 2 / np.pi, depth
     )
 
     assert np.allclose(skewness_fast_implementation, skewness_slow_implementation)
@@ -171,9 +173,9 @@ def test_skewness_stokeswave():
         spec[0, 0] = _var / ddir / df
 
         skewness = surface_elevation_skewness(
-            freq,
+            freq * 2 * np.pi,
             dir,
-            spec,
+            spec / 2 / np.pi,
             depth,
         )
         assert np.isclose(_stokes_skewness, skewness, rtol=1e-2, atol=1e-2)
@@ -262,9 +264,9 @@ def test_skewness_bichromatic():
         spec[1, 0] = _var / ddir / df
 
         skewness = surface_elevation_skewness(
-            freq,
+            freq * 2 * np.pi,
             dir,
-            spec,
+            spec / 2 / np.pi,
             depth,
         )
         assert np.isclose(

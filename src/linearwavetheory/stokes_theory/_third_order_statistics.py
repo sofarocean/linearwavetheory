@@ -33,9 +33,7 @@ def _skewness_from_spectrum(
     nd = len(direction)
 
     radian_direction = np.deg2rad(direction)
-    wavenumber = inverse_intrinsic_dispersion_relation(
-        2 * np.pi * angular_frequency, depth
-    )
+    wavenumber = inverse_intrinsic_dispersion_relation(angular_frequency, depth)
 
     frequency_bin = _frequency_bin(angular_frequency)
     direction_bin = _direction_bin(direction, wrap=360)

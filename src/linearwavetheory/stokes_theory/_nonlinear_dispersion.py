@@ -2,7 +2,7 @@ import numpy as np
 from numba import jit, prange
 
 from linearwavetheory import PhysicsOptions, inverse_intrinsic_dispersion_relation
-from linearwavetheory._numba_settings import numba_default, numba_default_parallel
+from linearwavetheory._numba_settings import numba_default
 from linearwavetheory._utils import _direction_bin
 from linearwavetheory.settings import StokesTheoryOptions, _parse_options
 from linearwavetheory.stokes_theory._third_order_coeficients import (
@@ -63,23 +63,39 @@ def _pointwise_estimate_nonlinear_dispersion(
 
             sum = 0.0
             for ifreq in range(nfreq):
-                # Use trapezoindal rule to integrate over the frequency. This expression reduces to 0.5*df at endpoints and
-                # df inbetween.
+                # Use trapezoindal rule to integrate over the frequency. This expression reduces to 0.5*df at endpoints
+                # and df inbetween.
                 iu = min(ifreq + 1, nfreq - 1)
                 il = max(ifreq - 1, 0)
                 delta_freq = (angular_frequency[iu] - angular_frequency[il]) / 2.0
 
-                # Compoment 2 wavenumber, components and angular frequency. The sign index is used to determine if we are
-                # calculating the sum (sign_index=1) or difference (sign_index=-1) interactions.
+                # Compoment 2 wavenumber, components and angular frequency. The sign index is used to determine if we
+                # are calculating the sum (sign_index=1) or difference (sign_index=-1) interactions.
                 k2 = wavenumbers[ifreq]
                 w2 = angular_frequency[ifreq]
                 kx2 = k2 * _cos
                 ky2 = k2 * _sin
 
-                # Calculate the interaction coefficients. Use interaction coefficient appropriate for Eulerian or Lagrangian
-                # observations.
+                # Calculate the interaction coefficients. Use interaction coefficient appropriate for Eulerian or
+                # Lagrangian observations.
 
                 if not nonlinear_options.use_s_theory:
+                    interaction_coef = third_order_dispersion_correction(
+                        w1,
+                        k1,
+                        kx1,
+                        ky1,
+                        w2,
+                        k2,
+                        kx2,
+                        ky2,
+                        depth,
+                        physics_options.grav,
+                        nonlinear_options.wave_driven_flow_included_in_mean_flow,
+                        nonlinear_options.wave_driven_setup_included_in_mean_depth,
+                        lagrangian,
+                    )
+                else:
                     interaction_coef = (
                         third_order_dispersion_correction_sigma_coordinates(
                             w1,
@@ -96,22 +112,6 @@ def _pointwise_estimate_nonlinear_dispersion(
                             nonlinear_options.wave_driven_setup_included_in_mean_depth,
                             lagrangian,
                         )
-                    )
-                else:
-                    interaction_coef = third_order_dispersion_correction(
-                        w1,
-                        k1,
-                        kx1,
-                        ky1,
-                        w2,
-                        k2,
-                        kx2,
-                        ky2,
-                        depth,
-                        physics_options.grav,
-                        nonlinear_options.wave_driven_flow_included_in_mean_flow,
-                        nonlinear_options.wave_driven_setup_included_in_mean_depth,
-                        lagrangian,
                     )
 
                 if w1 == w2:
