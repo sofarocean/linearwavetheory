@@ -6,6 +6,7 @@ from linearwavetheory.stokes_theory._third_order_statistics import (
 import numpy as np
 from linearwavetheory.stokes_theory._timeseries import surface_time_series
 from tests._utils import spectrum2D
+from linearwavetheory.settings import _GRAV
 
 
 def stokes_sum_ampitude(k, d):
@@ -14,7 +15,32 @@ def stokes_sum_ampitude(k, d):
 
 
 def stokes_setdown(wavenumber, depth):
-    return -wavenumber / np.sinh(2 * wavenumber * depth) / 2
+    angular_frequency = np.sqrt(_GRAV * wavenumber * np.tanh(wavenumber * depth))
+    sh = np.sinh(wavenumber * depth)
+    sh2 = np.sinh(2.0 * wavenumber * depth)
+    sh4 = np.sinh(4.0 * wavenumber * depth)
+
+    cg = (
+        np.abs(angular_frequency)
+        / wavenumber
+        * (0.5 + wavenumber * depth / np.sinh(2.0 * wavenumber * depth))
+    )
+    K = (
+        angular_frequency**2
+        / sh**2
+        / 4
+        * (sh4 + 3 * sh2 + 2 * wavenumber * depth)
+        / (sh2 + 2 * wavenumber * depth)
+    )
+
+    return (
+        -1
+        / _GRAV
+        * (
+            cg**2 * K / (_GRAV * depth - cg**2)
+            + angular_frequency**2 / 4 / sh**2
+        )
+    )
 
 
 def stokes_wave(amplitude, wavenumber, depth, phase, include_set_down=True):
@@ -46,7 +72,7 @@ def test_skewness_spectrum():
     kd = 0.5
     depth = 10
     k = kd / depth
-    omega = np.sqrt(9.81 * k * np.tanh(k * depth))
+    omega = np.sqrt(_GRAV * k * np.tanh(k * depth))
     period = 2 * np.pi / omega
 
     waveheight = 3
@@ -62,15 +88,15 @@ def test_skewness_spectrum():
     )
 
     skewness = surface_elevation_skewness(
-        freq,
+        freq * np.pi * 2,
         dir,
-        spec,
+        spec / np.pi / 2,
         depth=depth,
     )
 
     assert np.isclose(
-        skewness / np.sqrt(_var**3), 0.98467, rtol=1e-5, atol=1e-5
-    ), f"Skewness is {skewness/ np.sqrt(_var**3)} and target {0.98467}"
+        skewness / np.sqrt(_var**3), 0.987365, rtol=1e-5, atol=1e-5
+    ), f"Skewness is {skewness / np.sqrt(_var**3)} and target {0.987365}"
 
     # Test it works for infinite depth
     depth = np.inf
@@ -94,7 +120,7 @@ def test_implementation_consistency():
     for kd in kds:
 
         k = kd / depth
-        omega = np.sqrt(9.81 * k * np.tanh(k * depth))
+        omega = np.sqrt(_GRAV * k * np.tanh(k * depth))
         period = 2 * np.pi / omega
 
         waveheight = 3
@@ -109,9 +135,11 @@ def test_implementation_consistency():
         )
         i += 1
 
-    skewness_fast_implementation = surface_elevation_skewness(freq, dir, spectra, depth)
+    skewness_fast_implementation = surface_elevation_skewness(
+        freq * 2 * np.pi, dir, spectra / 2 / np.pi, depth
+    )
     skewness_slow_implementation = _reference_surface_skewness_calculation(
-        freq, dir, spectra, depth
+        freq * 2 * np.pi, dir, spectra / 2 / np.pi, depth
     )
 
     assert np.allclose(skewness_fast_implementation, skewness_slow_implementation)
@@ -131,7 +159,7 @@ def test_skewness_stokeswave():
     for kd in np.linspace(0.1, 10, 100):
 
         steepness = 0.1
-        depth = 9.81 * kd * np.tanh(kd) / omega**2
+        depth = _GRAV * kd * np.tanh(kd) / omega**2
         wavenumber = kd / depth
         amplitude = steepness / wavenumber
 
@@ -145,9 +173,9 @@ def test_skewness_stokeswave():
         spec[0, 0] = _var / ddir / df
 
         skewness = surface_elevation_skewness(
-            freq,
+            freq * 2 * np.pi,
             dir,
-            spec,
+            spec / 2 / np.pi,
             depth,
         )
         assert np.isclose(_stokes_skewness, skewness, rtol=1e-2, atol=1e-2)
@@ -218,7 +246,7 @@ def test_skewness_bichromatic():
     omega = 2 * np.pi / period
     for kd in np.linspace(0.1, 10, 100):
 
-        depth = 9.81 * kd * np.tanh(kd) / omega**2
+        depth = _GRAV * kd * np.tanh(kd) / omega**2
         wavenumber = kd / depth
         amplitude = steepness / wavenumber
 
@@ -236,9 +264,9 @@ def test_skewness_bichromatic():
         spec[1, 0] = _var / ddir / df
 
         skewness = surface_elevation_skewness(
-            freq,
+            freq * 2 * np.pi,
             dir,
-            spec,
+            spec / 2 / np.pi,
             depth,
         )
         assert np.isclose(

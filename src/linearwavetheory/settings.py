@@ -16,9 +16,28 @@ _WATER_DENSITY = 1025.0
 _KINEMATIC_SURFACE_TENSION = _SURFACE_TENSION / _WATER_DENSITY
 
 # Default Numerical Parameters
-_RELATIVE_TOLERANCE = 1e-3
+_RELATIVE_TOLERANCE = 1e-4
 _MAXIMUM_NUMBER_OF_ITERATIONS = 10
 _ABSOLUTE_TOLERANCE = np.inf
+
+_default_stokes_theory_options = {
+    "reference_frame": "eulerian",
+    "include_nonlinear_dispersion": True,
+    "include_nonlinear_amplitude_correction": True,
+    "include_bound_waves": True,
+    "wave_driven_flow_included_in_mean_flow": True,
+    "wave_driven_setup_included_in_mean_depth": True,
+    "include_sum_interactions": True,
+    "include_difference_interactions": True,
+    "include_eulerian_contribution_in_drift": True,
+    "angle_integration_convention": "janssen",
+    "use_s_theory": False,
+}
+
+StokesTheoryOptions = namedtuple(
+    "StokesTheoryOptions", _default_stokes_theory_options.keys()
+)
+
 
 _default_physics_options = {
     "kinematic_surface_tension": _KINEMATIC_SURFACE_TENSION,
@@ -31,6 +50,24 @@ _default_physics_options = {
 PhysicsOptions = namedtuple(
     "PhysicsOptions", [*list(_default_physics_options.keys()), "wave_regime_enum"]
 )
+
+
+def stokes_theory_options(**kwargs) -> StokesTheoryOptions:
+    for key in kwargs:
+        if key not in _default_stokes_theory_options:
+            raise ValueError(f"Unknown key {key}")
+
+    _stokes_theory_options = _default_stokes_theory_options.copy() | kwargs
+
+    _default_stokes_theory_options["reference_frame"] = _default_stokes_theory_options[
+        "reference_frame"
+    ].lower()
+    if _default_stokes_theory_options["reference_frame"] not in [
+        "eulerian",
+        "lagrangian",
+    ]:
+        raise ValueError("Reference frame must be one of 'eulerian' or 'lagrangian'")
+    return StokesTheoryOptions(**_stokes_theory_options)
 
 
 def physics_options(**kwargs) -> PhysicsOptions:
@@ -109,10 +146,11 @@ def numerical_options(**kwargs) -> NumericalOptions:
 
 default_numerical_options = numerical_options()
 default_physical_options = physics_options()
+default_stokes_theory_options = stokes_theory_options()
 
 
 @jit(**numba_default)
-def _parse_options(numerical, physical):
+def _parse_options(numerical, physical, nonlinear):
     """
     parse input options and return default classes if None. A word of warning. Calling this function from within a numba
     jitted function prevents us from using keyword or default arguments. This is because numba does not support them it
@@ -128,4 +166,7 @@ def _parse_options(numerical, physical):
     if physical is None:
         physical = default_physical_options
 
-    return numerical, physical
+    if nonlinear is None:
+        nonlinear = default_stokes_theory_options
+
+    return numerical, physical, nonlinear

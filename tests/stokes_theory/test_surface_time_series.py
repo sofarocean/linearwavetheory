@@ -30,5 +30,5 @@ def test_surface_time_series():
 
     relative_diff = np.abs(z[0] - surface_elevation) / amplitude
     assert np.all(
-        relative_diff < 1e-2
+        relative_diff < 1e-3
     ), f"Relative difference is {np.max(relative_diff)}"

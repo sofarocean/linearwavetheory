@@ -196,7 +196,9 @@ def test_intrinsic_phase_speed():
     # Capillary waves
     k = np.linspace(10000, 100000, 10)
     depth = np.full(10, 1000.0)
-    capillary_omega = np.sqrt(settings._KINEMATIC_SURFACE_TENSION * k)
+    capillary_omega = np.sqrt(
+        settings._GRAV / k + settings._KINEMATIC_SURFACE_TENSION * k
+    )
     omega = ld.intrinsic_phase_speed(k, depth)
     assert_allclose(omega, capillary_omega, atol=0, rtol=settings._RELATIVE_TOLERANCE)
 
@@ -247,7 +249,7 @@ def test_intrinsic_group_speed():
     assert_allclose(omega, deep_water_omega, atol=0, rtol=settings._RELATIVE_TOLERANCE)
 
     # Capillary waves
-    k = np.linspace(10000, 100000, 10)
+    k = np.linspace(100000, 1000000, 10)
     depth = np.full(10, 1000.0)
     capillary_omega = 3 * np.sqrt(settings._KINEMATIC_SURFACE_TENSION * k) / 2
     omega = ld.intrinsic_group_speed(k, depth)

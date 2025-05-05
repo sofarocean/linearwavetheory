@@ -1,4 +1,4 @@
-from ._perturbation_theory_coeficients import _second_order_surface_elevation
+from ._second_order_coeficients import _second_order_surface_elevation
 from linearwavetheory import inverse_intrinsic_dispersion_relation
 from linearwavetheory.settings import _parse_options
 import numpy as np
@@ -21,7 +21,7 @@ def surface_time_series(
     self_interactions = kwargs.get("self_interactions", True)
     cross_interactions = kwargs.get("cross_interactions", True)
     physics_options = kwargs.get("physics_options", None)
-    _, physics_options = _parse_options(None, physics_options)
+    _, physics_options, _ = _parse_options(None, physics_options, None)
     grav = physics_options.grav
 
     wavenumber = inverse_intrinsic_dispersion_relation(

@@ -1,5 +1,5 @@
 from linearwavetheory._utils import _direction_bin, _frequency_bin
-from linearwavetheory.stokes_theory._perturbation_theory_coeficients import (
+from linearwavetheory.stokes_theory._second_order_coeficients import (
     _second_order_surface_elevation,
 )
 from linearwavetheory.settings import PhysicsOptions, _parse_options
@@ -14,7 +14,7 @@ from numba_progress import ProgressBar
 
 @jit(**numba_default)
 def _skewness_from_spectrum(
-    frequency,
+    angular_frequency,
     direction,
     variance_density,
     interaction_coefficient_function,
@@ -24,19 +24,18 @@ def _skewness_from_spectrum(
     """
     Calculate the skewness of the wave field from the energy spectrum according to stokes perturbation theory.
 
-    :param frequency: frequency in Hz
+    :param angular_frequency: frequency in Hz
     :param direction: direction in degrees
     :param energy: energy spectrum in m^2/Hz/degree
     :return: skewness
     """
-    nf = len(frequency)
+    nf = len(angular_frequency)
     nd = len(direction)
 
     radian_direction = np.deg2rad(direction)
-    wavenumber = inverse_intrinsic_dispersion_relation(2 * np.pi * frequency, depth)
-    angular_frequency = 2 * np.pi * frequency
+    wavenumber = inverse_intrinsic_dispersion_relation(angular_frequency, depth)
 
-    frequency_bin = _frequency_bin(frequency)
+    frequency_bin = _frequency_bin(angular_frequency)
     direction_bin = _direction_bin(direction, wrap=360)
 
     _cos = np.cos(radian_direction)
@@ -83,7 +82,7 @@ def _skewness_from_spectrum(
                         * direction_bin[_dir1]
                         * direction_bin[_dir2]
                     )
-                    # Divide by four to switch from a one-sided spectrum to a two-sided spectrum
+                    # Divide by four to switch from a two-sided spectrum to a one-sided  spectrum
                     interacting_wave_energy = (
                         variance_density[_freq1, _dir1]
                         * variance_density[_freq2, _dir2]
@@ -98,7 +97,7 @@ def _skewness_from_spectrum(
 
 @jit(**numba_default)
 def surface_elevation_skewness_from_spectrum(
-    frequency,
+    angular_frequency,
     direction,
     variance_density,
     depth,
@@ -107,19 +106,18 @@ def surface_elevation_skewness_from_spectrum(
     """
     Calculate the skewness of the wave field from the energy spectrum according to stokes perturbation theory.
 
-    :param frequency: frequency in Hz
+    :param angular_frequency: frequency in Hz
     :param direction: direction in degrees
     :param energy: energy spectrum in m^2/Hz/degree
     :return: skewness
     """
-    nf = len(frequency)
+    nf = len(angular_frequency)
     nd = len(direction)
 
     radian_direction = np.deg2rad(direction)
-    wavenumber = inverse_intrinsic_dispersion_relation(2 * np.pi * frequency, depth)
-    angular_frequency = 2 * np.pi * frequency
+    wavenumber = inverse_intrinsic_dispersion_relation(angular_frequency, depth)
 
-    frequency_bin = _frequency_bin(frequency)
+    frequency_bin = _frequency_bin(angular_frequency)
     direction_bin = _direction_bin(direction, wrap=360)
 
     # pre-calculate wavenumber components
@@ -236,7 +234,7 @@ def surface_elevation_skewness_from_spectrum(
 #
 @jit(**numba_default_parallel)
 def _skewness_from_spectra(
-    frequency,
+    angular_frequency,
     direction,
     variance_density,
     interaction_coefficient_function,
@@ -259,7 +257,7 @@ def _skewness_from_spectra(
             progress_bar.update(1)
 
         skewness[i] = _skewness_from_spectrum(
-            frequency,
+            angular_frequency,
             direction,
             variance_density[i, :, :],
             interaction_coefficient_function,
@@ -272,7 +270,7 @@ def _skewness_from_spectra(
 
 @jit(**numba_default_parallel)
 def _surface_elevation_skewness_from_spectra(
-    frequency,
+    angular_frequency,
     direction,
     variance_density,
     depth,
@@ -294,7 +292,7 @@ def _surface_elevation_skewness_from_spectra(
             progress_bar.update(1)
 
         skewness[i] = surface_elevation_skewness_from_spectrum(
-            frequency,
+            angular_frequency,
             direction,
             variance_density[i, :, :],
             depth[i],
@@ -306,7 +304,7 @@ def _surface_elevation_skewness_from_spectra(
 
 @jit(**numba_default)
 def _reference_surface_skewness_calculation(
-    frequency: np.ndarray,
+    angular_frequency: np.ndarray,
     direction: np.ndarray,
     variance_density: np.ndarray,
     depth: Union[float, np.ndarray] = np.inf,
@@ -315,7 +313,7 @@ def _reference_surface_skewness_calculation(
     """
     Calculate the skewness of the wave field for a general interaction coefficient
 
-    :param frequency: frequency in Hz
+    :param angular_frequency: frequency in Hz
     :param direction: direction in degrees
     :param variance_density: energy spectrum in m^2/Hz/degree
     :param depth: depth in meters
@@ -323,10 +321,10 @@ def _reference_surface_skewness_calculation(
     :param progress_bar: progress bar (optional). Pass a numba progress bar to show progress.
     :return: skewness as ndarray
     """
-    _, physics_options = _parse_options(None, physics_options)
+    _, physics_options, _ = _parse_options(None, physics_options, None)
 
     skewness = _skewness_from_spectra(
-        frequency,
+        angular_frequency,
         direction,
         variance_density,
         _second_order_surface_elevation,
@@ -338,7 +336,7 @@ def _reference_surface_skewness_calculation(
 
 
 def surface_elevation_skewness(
-    frequency: np.ndarray,
+    angular_frequency: np.ndarray,
     direction: np.ndarray,
     variance_density: np.ndarray,
     depth: Union[float, np.ndarray] = np.inf,
@@ -353,15 +351,15 @@ def surface_elevation_skewness(
     Herbers, T. H. C., & Janssen, T. T. (2016). Lagrangian surface wave motion and Stokes drift fluctuations.
     Journal of Physical Oceanography, 46(4), 1009-1021.
 
-    :param frequency: frequency in Hz
+    :param angular_frequency: frequency in rad/s
     :param direction: direction in degrees
-    :param variance_density: energy spectrum in m^2/Hz/degree
+    :param variance_density: energy spectrum in m^2 s/rad/degree
     :param depth: depth in meters
     :param physics_options: physics options
     :param progress_bar: progress bar (optional). Pass a numba progress bar to show progress.
     :return: skewness as ndarray
     """
-    _, physics_options = _parse_options(None, physics_options)
+    _, physics_options, _ = _parse_options(None, physics_options, None)
 
     dims = variance_density.shape
     ndim = variance_density.ndim
@@ -376,7 +374,7 @@ def surface_elevation_skewness(
             "the direction dimension."
         )
 
-    if not (dims[-2] == len(frequency)):
+    if not (dims[-2] == len(angular_frequency)):
         raise ValueError(
             "variance_density must have the same number of frequencies as the "
             "length of the direction array. The second to last dimension of variance_density is assumed to "
@@ -396,7 +394,7 @@ def surface_elevation_skewness(
         total=number_of_spectra, disable=disable, desc="Calculating skewness"
     ) as progress_bar:
         skewness = _surface_elevation_skewness_from_spectra(
-            frequency,
+            angular_frequency,
             direction,
             variance_density,
             depth,

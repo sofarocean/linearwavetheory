@@ -299,13 +299,12 @@ def _inverse_intrinsic_dispersion_relation_intermediate(
     if intrinsic_angular_frequency == 0:
         return 0.0
 
-    # == Initial Estimate ==
-    if intrinsic_angular_frequency > np.sqrt(grav / depth):
-        # use the deep water relation
-        wavenumber_estimate = intrinsic_angular_frequency**2 / grav
-    else:
-        # use the shallow water relation
-        wavenumber_estimate = intrinsic_angular_frequency / np.sqrt(grav * depth)
+    fac = np.tanh(intrinsic_angular_frequency / np.sqrt(grav * depth))
+    # == Initial Estimate is a smooth sum of the shallow water and deep water wave number ==
+    wavenumber_estimate = (
+        intrinsic_angular_frequency**2 / grav * (1 - fac)
+        + intrinsic_angular_frequency / np.sqrt(grav * depth) * fac
+    )
 
     # If the initial estimate turns out to be in the capillary range- use the pure capillary dispersion relation for
     # the initial estimate.
