@@ -1,4 +1,10 @@
-from numba import vectorize, float64, bool
+try:
+    from numba import vectorize, float64, bool
+except ImportError:
+    from numba import vectorize, float64, boolean
+
+    bool = boolean
+
 from linearwavetheory._numba_settings import numba_default_vectorize
 import numpy as np
 
