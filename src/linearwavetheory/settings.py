@@ -19,6 +19,7 @@ _KINEMATIC_SURFACE_TENSION = _SURFACE_TENSION / _WATER_DENSITY
 _RELATIVE_TOLERANCE = 1e-4
 _MAXIMUM_NUMBER_OF_ITERATIONS = 10
 _ABSOLUTE_TOLERANCE = np.inf
+_UNDER_RELAXATION_FACTOR = 0.8
 
 _default_stokes_theory_options = {
     "reference_frame": "eulerian",
@@ -30,7 +31,7 @@ _default_stokes_theory_options = {
     "include_sum_interactions": True,
     "include_difference_interactions": True,
     "include_eulerian_contribution_in_drift": True,
-    "angle_integration_convention": "janssen",
+    "angle_integration_convention": "wavenumber_aligned",
     "use_s_theory": False,
 }
 
@@ -59,10 +60,10 @@ def stokes_theory_options(**kwargs) -> StokesTheoryOptions:
 
     _stokes_theory_options = _default_stokes_theory_options.copy() | kwargs
 
-    _default_stokes_theory_options["reference_frame"] = _default_stokes_theory_options[
+    _stokes_theory_options["reference_frame"] = _stokes_theory_options[
         "reference_frame"
     ].lower()
-    if _default_stokes_theory_options["reference_frame"] not in [
+    if _stokes_theory_options["reference_frame"] not in [
         "eulerian",
         "lagrangian",
     ]:
@@ -116,6 +117,7 @@ _default_numerical_options = {
     "relative_tolerance": _RELATIVE_TOLERANCE,
     "absolute_tolerance": _ABSOLUTE_TOLERANCE,
     "maximum_number_of_iterations": _MAXIMUM_NUMBER_OF_ITERATIONS,
+    "under_relaxation_factor": _UNDER_RELAXATION_FACTOR,
 }
 
 NumericalOptions = namedtuple(

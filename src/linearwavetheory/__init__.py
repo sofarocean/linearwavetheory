@@ -101,3 +101,11 @@ from .dispersion import (
 from .settings import (
     PhysicsOptions,
 )
+
+from .stokes_theory._estimate_primary_spectra import (
+    estimate_primary_spectrum_from_nonlinear_spectra,
+)
+from .stokes_theory._higher_order_spectra import (
+    nonlinear_wave_spectra_1d,
+    nonlinear_wave_spectra_2d,
+)
