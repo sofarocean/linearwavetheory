@@ -8,7 +8,7 @@ from .vertical_eigen_functions import sh
 def dimensionless_surface_amplitude(
     steepness, relative_depth, harmonic_number, **kwargs
 ):
-    amplitude = 0.0
+
     order = kwargs.get("order", _DEFAULT_ORDER)
     match harmonic_number:
         case 1:

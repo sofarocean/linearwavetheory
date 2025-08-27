@@ -275,6 +275,7 @@ def vertical_particle_displacement(
             wavenumber, depth, kwargs.get("physics_options", None)
         )
     )
+
     return (
         dimensionless_vertical_particle_displacement(
             steepness,
@@ -361,7 +362,7 @@ def vertical_particle_location(
 
     w0 = intrinsic_dispersion_relation(
         wavenumber, depth, kwargs.get("physics_options", None)
-    )
+    )[0]
     return (
         dimensionless_vertical_particle_location(
             steepness,
@@ -444,7 +445,7 @@ def horizontal_particle_displacement(
 
     w0 = intrinsic_dispersion_relation(
         wavenumber, depth, kwargs.get("physics_options", None)
-    )
+    )[0]
     return (
         dimensionless_horizontal_particle_displacement(
             steepness,
@@ -532,7 +533,7 @@ def horizontal_particle_location(
 
     w0 = intrinsic_dispersion_relation(
         wavenumber, depth, kwargs.get("physics_options", None)
-    )
+    )[0]
     xmean = (
         dimensionless_lagrangian_mean_location(
             steepness,
@@ -551,6 +552,44 @@ def horizontal_particle_location(
         )
         + xmean
     )
+
+
+def horizontal_mean_particle_location(
+    steepness, wavenumber, depth, time, x, z, relative_phase_offset=0, **kwargs
+):
+    """
+    This function calculates the horizontal mean particle location of a fourth order Stokes wave.
+    The particle is identified with x,z where x is the mean horizontal position at t=0 and z is the mean vertical
+    position of the material surface the particle is located on. The function returns the horizontal location of the
+    particle at time t.
+
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber
+    :param depth: depth (m)
+    :param time: (time in seconds)
+    :param x: mean horizontal position (m) of the particle at t=0
+    :param z: mean vertical position (m) of the material surface the partical is located on.
+    :param relative_phase_offset: phase offset (dimensionless), default is 0 (no offset)
+    :param kwargs:
+    :return: horizontal particle location (m) at time t
+    """
+
+    w0 = intrinsic_dispersion_relation(
+        wavenumber, depth, kwargs.get("physics_options", None)
+    )[0]
+    xmean = (
+        dimensionless_lagrangian_mean_location(
+            steepness,
+            wavenumber * depth,
+            w0 * time,
+            wavenumber * x,
+            wavenumber * z,
+            **kwargs
+        )
+        / wavenumber
+    )
+
+    return xmean
 
 
 def dimensionless_horizontal_velocity(
@@ -623,7 +662,7 @@ def horizontal_velocity(
 
     angular_frequency = intrinsic_dispersion_relation(
         wavenumber, depth, kwargs.get("physics_options", None)
-    )
+    )[0]
 
     c = angular_frequency / wavenumber
     return (
@@ -710,7 +749,7 @@ def vertical_velocity(
 
     angular_frequency = intrinsic_dispersion_relation(
         wavenumber, depth, kwargs.get("physics_options", None)
-    )
+    )[0]
 
     c = angular_frequency / wavenumber
     return (
@@ -725,3 +764,15 @@ def vertical_velocity(
         )
         * c
     )
+
+
+def velocities(
+    steepness, wavenumber, depth, time, x, z, relative_phase_offset=0, **kwargs
+):
+    u = horizontal_velocity(
+        steepness, wavenumber, depth, time, x, z, relative_phase_offset, **kwargs
+    )
+    w = vertical_velocity(
+        steepness, wavenumber, depth, time, x, z, relative_phase_offset, **kwargs
+    )
+    return u, w

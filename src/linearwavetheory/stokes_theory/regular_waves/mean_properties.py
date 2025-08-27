@@ -1,3 +1,5 @@
+import numpy as np
+
 from linearwavetheory.stokes_theory.regular_waves.settings import _DEFAULT_ORDER
 from linearwavetheory.stokes_theory.regular_waves.eulerian_elevation_amplitudes import (
     dimensionless_surface_amplitude,
@@ -7,7 +9,27 @@ import linearwavetheory.stokes_theory.regular_waves.lagrangian_displacement_ampl
 from linearwavetheory.dispersion import intrinsic_dispersion_relation
 
 
-def waveheight(steepness, wavenumber, depth, **kwargs):
+def waveheight(steepness, wavenumber, depth, z, **kwargs):
+    """
+    This function calculates the wave height up to the fifth order. Default order is 4. Note that
+    waveheight is invariant in reference frames for a regular wave and may thus be
+    calculated from Eulerian amplitudes only.
+
+    :param steepness: steepness (wave amplitude times wavenumber)
+    :param wavenumber: wavenumber
+    :param depth: depth
+    :param kwargs:
+    :return:
+    """
+    return (
+        dimensionless_waveheight(
+            steepness, wavenumber * depth, wavenumber * z, **kwargs
+        )
+        / wavenumber
+    )
+
+
+def dimensionless_waveheight(steepness, relative_depth, relative_z, **kwargs):
     """
     This function calculates the wave height up to the fifth order. Default order is 4. Note that
     waveheight is invariant in reference frames for a regular wave and may thus be
@@ -20,11 +42,27 @@ def waveheight(steepness, wavenumber, depth, **kwargs):
     :return:
     """
 
-    relative_depth = wavenumber * depth
-    a1 = dimensionless_surface_amplitude(steepness, relative_depth, 1, **kwargs)
-    a3 = dimensionless_surface_amplitude(steepness, relative_depth, 3, **kwargs)
-    a5 = dimensionless_surface_amplitude(steepness, relative_depth, 5, **kwargs)
-    return 2 * (a1 + a3 + a5) / wavenumber
+    stochastic = kwargs.get("stochastic", True)
+    order = kwargs.get("order", _DEFAULT_ORDER)
+
+    a11 = steepness * eulerian_amplitudes.eta11(relative_depth, relative_z, **kwargs)
+    a31 = (
+        steepness**3 * eulerian_amplitudes.eta31(relative_depth, relative_z, **kwargs)
+        if order >= 3
+        else 0
+    )
+    a33 = (
+        steepness**3 * eulerian_amplitudes.eta33(relative_depth, relative_z, **kwargs)
+        if order >= 3
+        else 0
+    )
+
+    if stochastic:
+        a11 = np.sqrt(np.pi / 4)
+        a31 *= 3 / 4 * np.pi
+        a33 *= 3 / 4 * np.pi
+
+    return 2 * (a11 + a31 + a33)
 
 
 def dimensionless_variance(steepness, relative_depth, relative_z=0, **kwargs):
@@ -273,6 +311,54 @@ def dimensionless_trough_height(steepness, relative_depth, **kwargs):
             steepness, relative_depth, harmonic_number, **kwargs
         )
     return trough_height
+
+
+def dimensionless_crest_or_trough_amplitude(
+    steepness, relative_depth, relative_z, crest_or_trough="crest", **kwargs
+):
+    """
+    Dimensionless crest amplitude of the surface elevation for a fourth order Stokes wave. To obtain
+    crest amplitude divide result by the wave number.
+
+    :param steepness: wave steepness (dimensionless)
+    :param relative_depth: relative depth (dimensionless), typically kd where k is the wavenumber and d is the water
+        depth
+    :param kwargs:
+    :return: dimensionless crest amplitude of the surface elevation (dimensionless)
+    """
+
+    reference_frame = kwargs.get("reference_frame", "eulerian")
+    stochastic = kwargs.get("stochastic", True)
+
+    _waveheight = dimensionless_waveheight(
+        steepness, relative_depth, relative_z, **kwargs
+    )
+
+    amplitude = _waveheight / 2
+    if reference_frame == "lagrangian":
+        return amplitude
+
+    l20 = steepness**2 * eulerian_amplitudes.eta22(
+        relative_depth, relative_z, **kwargs
+    )
+
+    fac = 2 if stochastic else 1
+    l40 = (
+        fac
+        * steepness**4
+        * (
+            eulerian_amplitudes.eta42(relative_depth, relative_z, **kwargs)
+            + eulerian_amplitudes.eta44(relative_depth, relative_z, **kwargs)
+        )
+    )
+    if crest_or_trough == "crest":
+        amplitude += l20 + l40
+    elif crest_or_trough == "trough":
+        amplitude -= l20 - l40
+    else:
+        raise ValueError(f"Invalid crest_or_trough: {crest_or_trough}")
+
+    return amplitude
 
 
 def dimensionless_stokes_drift(steepness, relative_depth, relative_z=0, **kwargs):

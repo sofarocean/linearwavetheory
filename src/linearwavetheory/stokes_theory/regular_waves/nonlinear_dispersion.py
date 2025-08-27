@@ -9,7 +9,6 @@ The Eulerian solution for the nonlinear dispersion relation is based on the work
 while the Lagrangian solution is new.
 """
 
-
 import numpy as np
 from .settings import _DEFAULT_ORDER
 from .lagrangian_displacement_amplitudes import ul20, ul40
@@ -69,14 +68,31 @@ def dimensionless_nonlinear_dispersion_relation(
     :return: dimensionless angular frequency
     """
 
-    order = kwargs.get("order", _DEFAULT_ORDER)
+    # This is mainly for testing purposes
+    eulerian_dispersion_order = kwargs.get(
+        "eulerian_dispersion_order", kwargs.get("order", _DEFAULT_ORDER)
+    )
+    lagrangian_dispersion_order = kwargs.get(
+        "lagrangian_dispersion_order", kwargs.get("order", _DEFAULT_ORDER)
+    )
 
     if reference_frame == ReferenceFrame.eulerian:
-        _w2 = 0 if order < 2 else w2(relative_depth, **kwargs)
-        _w4 = 0 if order < 4 else w4(relative_depth, **kwargs)
+        _w2 = 0 if eulerian_dispersion_order < 2 else w2(relative_depth, **kwargs)
+        _w4 = 0 if eulerian_dispersion_order < 4 else w4(relative_depth, **kwargs)
     elif reference_frame == ReferenceFrame.lagrangian:
-        _w2 = 0 if order < 2 else w2l(relative_depth, relative_z, **kwargs)
-        _w4 = 0 if order < 4 else w4l(relative_depth, relative_z, **kwargs)
+        _w2e = w2(relative_depth, **kwargs) if eulerian_dispersion_order < 2 else 0
+        _w4e = w4(relative_depth, **kwargs) if eulerian_dispersion_order < 4 else 0
+
+        _w2 = (
+            0
+            if lagrangian_dispersion_order < 2
+            else w2l(relative_depth, relative_z, **kwargs) - _w2e
+        )
+        _w4 = (
+            0
+            if lagrangian_dispersion_order < 4
+            else w4l(relative_depth, relative_z, **kwargs) - _w4e
+        )
     else:
         raise ValueError(
             f"Invalid reference frame {reference_frame}. Choose 'eulerian' or 'lagrangian'."
