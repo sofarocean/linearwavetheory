@@ -2,6 +2,7 @@ import src.linearwavetheory.dispersion as ld
 import numpy as np
 from numpy.testing import assert_allclose
 from src.linearwavetheory import settings
+from src.linearwavetheory.settings import physics_options
 
 
 def test_inverse_intrinsic_dispersion_relation():
@@ -314,3 +315,341 @@ def test_encounter_group_phase_velocity_speed():
 
     # 2d vec, depth vec, 2d vec  u, 2d vec o
     cg, c = _helper(((0.1, 0), (0.2, 0)), (10, 11), ((0.1, 0), (0.2, 0)))
+
+
+def test_inverse_encounter_dispersion_relation_zero_current():
+    """
+    With no current, the principal root reduces to the intrinsic inversion, and the secondary root does not exist.
+    """
+    freq = np.array([0.3, 0.6, 1.0])
+    direction = np.zeros_like(freq)
+
+    for regime in ["shallow", "intermediate", "deep"]:
+        opts = physics_options(wave_regime=regime)
+        depth = 5.0 if regime == "shallow" else (5000.0 if regime == "deep" else 20.0)
+
+        k_principal = ld.inverse_encounter_dispersion_relation(
+            freq, direction, depth=depth, physics_options=opts
+        )
+        k_reference = ld.inverse_intrinsic_dispersion_relation(
+            freq, depth, physics_options=opts
+        )
+        assert_allclose(
+            k_principal, k_reference, atol=0, rtol=settings._RELATIVE_TOLERANCE
+        )
+
+        k_secondary = ld.inverse_encounter_dispersion_relation(
+            freq, direction, depth=depth, physics_options=opts, root="secondary"
+        )
+        assert np.all(np.isnan(k_secondary))
+
+
+def test_inverse_encounter_dispersion_relation_roundtrip_principal():
+    """
+    For a range of wavenumbers, currents and depths, the forward encounter dispersion relation followed by its
+    inverse should recover the original wavenumber for the principal root.
+    """
+    for regime, depth in [("deep", 5000.0), ("intermediate", 20.0), ("shallow", 5.0)]:
+        opts = physics_options(wave_regime=regime)
+        for current_speed, current_direction_degrees in [
+            (0.0, 0.0),
+            (0.5, 0.0),
+            (2.0, 30.0),
+            (-0.3, 0.0),
+        ]:
+            for k in [0.001, 0.01, 0.05]:
+                direction_degrees = 0.0
+                current_direction_radians = np.deg2rad(current_direction_degrees)
+                delta = current_speed * np.cos(
+                    np.deg2rad(direction_degrees) - current_direction_radians
+                )
+
+                omega = ld.encounter_dispersion_relation(
+                    np.array((k, 0.0)),
+                    depth,
+                    ambient_current_velocity=(
+                        current_speed * np.cos(current_direction_radians),
+                        current_speed * np.sin(current_direction_radians),
+                    ),
+                    physics_options=opts,
+                )[0]
+                if omega < 0:
+                    continue
+
+                k_est = ld.inverse_encounter_dispersion_relation(
+                    omega,
+                    direction_degrees,
+                    relative_current_speed=current_speed,
+                    relative_current_direction_degrees=current_direction_degrees,
+                    depth=depth,
+                    physics_options=opts,
+                )
+                assert_allclose(
+                    k_est,
+                    k,
+                    atol=0,
+                    rtol=100 * settings._RELATIVE_TOLERANCE,
+                    err_msg=f"regime={regime} k={k} delta={delta}",
+                )
+
+
+def test_inverse_encounter_dispersion_relation_roundtrip_secondary():
+    """
+    Round-trip check for the secondary root, in the regimes/current combinations where it is expected to exist:
+    deep/intermediate water with a following current (delta > 0), and shallow water with a supercritical current.
+    """
+    direction = 0.0
+
+    # deep and intermediate water, delta > 0
+    for regime, depth in [("deep", 5000.0), ("intermediate", 20.0)]:
+        opts = physics_options(wave_regime=regime)
+        for current_speed in [0.5, 2.0]:
+            for k in [0.01, 0.1, 1.0]:
+                intrinsic_omega = ld.intrinsic_dispersion_relation(
+                    k, depth, physics_options=opts
+                )[0]
+                omega = k * current_speed - intrinsic_omega
+                if omega < 0:
+                    continue
+
+                k_est = ld.inverse_encounter_dispersion_relation(
+                    omega,
+                    direction,
+                    relative_current_speed=current_speed,
+                    relative_current_direction_degrees=0.0,
+                    depth=depth,
+                    physics_options=opts,
+                    root="secondary",
+                )
+                assert_allclose(
+                    k_est,
+                    k,
+                    atol=0,
+                    rtol=100 * settings._RELATIVE_TOLERANCE,
+                    err_msg=f"regime={regime} k={k} current_speed={current_speed}",
+                )
+
+    # shallow water, supercritical current
+    opts = physics_options(wave_regime="shallow")
+    depth = 5.0
+    c_sw = np.sqrt(settings._GRAV * depth)
+    for current_speed in [c_sw * 1.5, c_sw * 3.0]:
+        for k in [0.001, 0.005]:
+            omega = k * current_speed - k * c_sw
+            k_est = ld.inverse_encounter_dispersion_relation(
+                omega,
+                direction,
+                relative_current_speed=current_speed,
+                relative_current_direction_degrees=0.0,
+                depth=depth,
+                physics_options=opts,
+                root="secondary",
+            )
+            assert_allclose(k_est, k, atol=0, rtol=settings._RELATIVE_TOLERANCE)
+
+
+def test_inverse_encounter_dispersion_relation_nonexistence():
+    """
+    Check that roots that do not exist return NaN rather than raising, across regimes.
+    """
+    direction = 0.0
+
+    # Delta == 0 -> secondary always NaN, regardless of regime.
+    for regime, depth in [("deep", 5000.0), ("intermediate", 20.0), ("shallow", 5.0)]:
+        opts = physics_options(wave_regime=regime)
+        k_sec = ld.inverse_encounter_dispersion_relation(
+            1.0,
+            direction,
+            relative_current_speed=0.0,
+            depth=depth,
+            physics_options=opts,
+            root="secondary",
+        )
+        assert np.isnan(k_sec[0])
+
+    # deep/intermediate water: opposing current strong enough to block all waves in this direction.
+    for regime, depth in [("deep", 5000.0), ("intermediate", 20.0)]:
+        opts = physics_options(wave_regime=regime)
+        current_speed = -5.0
+        k_p = ld.inverse_encounter_dispersion_relation(
+            50.0,
+            direction,
+            relative_current_speed=current_speed,
+            depth=depth,
+            physics_options=opts,
+        )
+        k_s = ld.inverse_encounter_dispersion_relation(
+            50.0,
+            direction,
+            relative_current_speed=current_speed,
+            depth=depth,
+            physics_options=opts,
+            root="secondary",
+        )
+        assert np.isnan(k_p[0])
+        assert np.isnan(k_s[0])
+
+    # shallow water: retreating current faster than the shallow-water wave speed blocks the principal root too.
+    opts = physics_options(wave_regime="shallow")
+    depth = 5.0
+    c_sw = np.sqrt(settings._GRAV * depth)
+    k_p = ld.inverse_encounter_dispersion_relation(
+        1.0,
+        direction,
+        relative_current_speed=-2 * c_sw,
+        depth=depth,
+        physics_options=opts,
+    )
+    assert np.isnan(k_p[0])
+
+    # shallow water: subcritical current -> secondary never exists.
+    k_s = ld.inverse_encounter_dispersion_relation(
+        1.0,
+        direction,
+        relative_current_speed=0.5 * c_sw,
+        depth=depth,
+        physics_options=opts,
+        root="secondary",
+    )
+    assert np.isnan(k_s[0])
+
+    # Negative frequency raises.
+    try:
+        ld.inverse_encounter_dispersion_relation(-1.0, 0.0)
+        assert False
+    except ValueError:
+        pass
+
+    # Invalid root raises.
+    try:
+        ld.inverse_encounter_dispersion_relation(1.0, 0.0, root="bogus")
+        assert False
+    except ValueError:
+        pass
+
+
+def test_inverse_encounter_dispersion_relation_closed_form_cross_check():
+    """
+    In the regimes where the closed-form shallow/deep formulas should coincide with the general numerical solver,
+    check that they agree (catches inconsistencies between the two implementations of the same physics).
+    """
+    default_opts = physics_options(wave_regime="intermediate")
+
+    # Deep-water-like: very large depth, moderate k.
+    depth = 5000.0
+    deep_opts = physics_options(wave_regime="deep")
+    for delta_current, direction in [(0.0, 0.0), (1.0, 0.0), (-0.5, 0.0)]:
+        omega = 1.0
+        k_general = ld.inverse_encounter_dispersion_relation(
+            omega,
+            direction,
+            relative_current_speed=delta_current,
+            depth=depth,
+            physics_options=default_opts,
+        )
+        k_deep = ld.inverse_encounter_dispersion_relation(
+            omega,
+            direction,
+            relative_current_speed=delta_current,
+            depth=depth,
+            physics_options=deep_opts,
+        )
+        assert_allclose(k_general, k_deep, atol=0, rtol=1e-3)
+
+    # Shallow-water-like: small depth, supercritical current so both roots are in the linear regime.
+    depth = 5.0
+    shallow_opts = physics_options(wave_regime="shallow")
+    c_sw = np.sqrt(settings._GRAV * depth)
+    omega = 0.01
+    for root in ["principal", "secondary"]:
+        current_speed = c_sw * 2.0
+        k_general = ld.inverse_encounter_dispersion_relation(
+            omega,
+            0.0,
+            relative_current_speed=current_speed,
+            depth=depth,
+            physics_options=default_opts,
+            root=root,
+        )
+        k_shallow = ld.inverse_encounter_dispersion_relation(
+            omega,
+            0.0,
+            relative_current_speed=current_speed,
+            depth=depth,
+            physics_options=shallow_opts,
+            root=root,
+        )
+        assert_allclose(k_general, k_shallow, atol=0, rtol=1e-2)
+
+
+def test_inverse_encounter_dispersion_relation_broadcasting():
+    """
+    Check that array frequency/direction broadcast correctly against a scalar current and both scalar and array
+    depth.
+    """
+    freq = np.array([0.3, 0.5, 0.8])
+    direction_degrees = np.array([0.0, 30.0, 60.0])
+
+    k_scalar_depth = ld.inverse_encounter_dispersion_relation(
+        freq,
+        direction_degrees,
+        relative_current_speed=0.3,
+        relative_current_direction_degrees=20.0,
+        depth=20.0,
+    )
+    assert k_scalar_depth.shape == freq.shape
+
+    depths = np.array([20.0, 30.0, 50.0])
+    k_array_depth = ld.inverse_encounter_dispersion_relation(
+        freq,
+        direction_degrees,
+        relative_current_speed=0.3,
+        relative_current_direction_degrees=20.0,
+        depth=depths,
+    )
+    assert k_array_depth.shape == freq.shape
+    assert np.all(np.isfinite(k_array_depth))
+
+
+def test_inverse_encounter_dispersion_relation_ignores_surface_tension():
+    """
+    Surface tension is not yet supported on the encounter-frame path: results must be identical regardless of
+    physics_options.kinematic_surface_tension / wave_type, even at capillary-range frequencies where tension
+    would otherwise matter (see inverse_intrinsic_dispersion_relation, which does account for it).
+    """
+    high_freq = 500.0  # capillary range, where tension has a large effect on the plain intrinsic relation
+    gravity_only = physics_options(wave_type="gravity")
+    gravity_capillary = physics_options(wave_type="gravity-capillary")
+
+    for regime in ["shallow", "intermediate", "deep"]:
+        opts_gravity = physics_options(wave_type="gravity", wave_regime=regime)
+        opts_capillary = physics_options(
+            wave_type="gravity-capillary", wave_regime=regime
+        )
+        depth = 5.0 if regime == "shallow" else (5000.0 if regime == "deep" else 20.0)
+
+        k_gravity = ld.inverse_encounter_dispersion_relation(
+            high_freq,
+            0.0,
+            relative_current_speed=0.5,
+            depth=depth,
+            physics_options=opts_gravity,
+        )
+        k_capillary = ld.inverse_encounter_dispersion_relation(
+            high_freq,
+            0.0,
+            relative_current_speed=0.5,
+            depth=depth,
+            physics_options=opts_capillary,
+        )
+        assert_allclose(k_gravity, k_capillary, atol=0, rtol=1e-12)
+
+    # Sanity check that this frequency actually is high enough for tension to matter for the *plain* intrinsic
+    # relation -- otherwise the check above would be vacuous.
+    k_ref_gravity = ld.inverse_intrinsic_dispersion_relation(
+        high_freq, 100.0, physics_options=gravity_only
+    )
+    k_ref_capillary = ld.inverse_intrinsic_dispersion_relation(
+        high_freq, 100.0, physics_options=gravity_capillary
+    )
+    assert not np.allclose(k_ref_gravity, k_ref_capillary, rtol=1e-6)
