@@ -351,22 +351,25 @@ def test_inverse_encounter_dispersion_relation_roundtrip_principal():
     """
     for regime, depth in [("deep", 5000.0), ("intermediate", 20.0), ("shallow", 5.0)]:
         opts = physics_options(wave_regime=regime)
-        for current_speed, current_direction in [
+        for current_speed, current_direction_degrees in [
             (0.0, 0.0),
             (0.5, 0.0),
-            (2.0, 0.3),
+            (2.0, 30.0),
             (-0.3, 0.0),
         ]:
             for k in [0.001, 0.01, 0.05]:
-                direction = 0.0
-                delta = current_speed * np.cos(direction - current_direction)
+                direction_degrees = 0.0
+                current_direction_radians = np.deg2rad(current_direction_degrees)
+                delta = current_speed * np.cos(
+                    np.deg2rad(direction_degrees) - current_direction_radians
+                )
 
                 omega = ld.encounter_dispersion_relation(
                     np.array((k, 0.0)),
                     depth,
                     ambient_current_velocity=(
-                        current_speed * np.cos(current_direction),
-                        current_speed * np.sin(current_direction),
+                        current_speed * np.cos(current_direction_radians),
+                        current_speed * np.sin(current_direction_radians),
                     ),
                     physics_options=opts,
                 )[0]
@@ -375,9 +378,9 @@ def test_inverse_encounter_dispersion_relation_roundtrip_principal():
 
                 k_est = ld.inverse_encounter_dispersion_relation(
                     omega,
-                    direction,
+                    direction_degrees,
                     relative_current_speed=current_speed,
-                    relative_current_direction=current_direction,
+                    relative_current_direction_degrees=current_direction_degrees,
                     depth=depth,
                     physics_options=opts,
                 )
@@ -413,7 +416,7 @@ def test_inverse_encounter_dispersion_relation_roundtrip_secondary():
                     omega,
                     direction,
                     relative_current_speed=current_speed,
-                    relative_current_direction=0.0,
+                    relative_current_direction_degrees=0.0,
                     depth=depth,
                     physics_options=opts,
                     root="secondary",
@@ -437,7 +440,7 @@ def test_inverse_encounter_dispersion_relation_roundtrip_secondary():
                 omega,
                 direction,
                 relative_current_speed=current_speed,
-                relative_current_direction=0.0,
+                relative_current_direction_degrees=0.0,
                 depth=depth,
                 physics_options=opts,
                 root="secondary",
@@ -585,13 +588,13 @@ def test_inverse_encounter_dispersion_relation_broadcasting():
     depth.
     """
     freq = np.array([0.3, 0.5, 0.8])
-    direction = np.array([0.0, 0.5, 1.0])
+    direction_degrees = np.array([0.0, 30.0, 60.0])
 
     k_scalar_depth = ld.inverse_encounter_dispersion_relation(
         freq,
-        direction,
+        direction_degrees,
         relative_current_speed=0.3,
-        relative_current_direction=0.2,
+        relative_current_direction_degrees=20.0,
         depth=20.0,
     )
     assert k_scalar_depth.shape == freq.shape
@@ -599,9 +602,9 @@ def test_inverse_encounter_dispersion_relation_broadcasting():
     depths = np.array([20.0, 30.0, 50.0])
     k_array_depth = ld.inverse_encounter_dispersion_relation(
         freq,
-        direction,
+        direction_degrees,
         relative_current_speed=0.3,
-        relative_current_direction=0.2,
+        relative_current_direction_degrees=20.0,
         depth=depths,
     )
     assert k_array_depth.shape == freq.shape

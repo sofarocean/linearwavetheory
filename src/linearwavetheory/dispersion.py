@@ -318,9 +318,9 @@ def encounter_dispersion_relation(
 @jit(**numba_default)
 def inverse_encounter_dispersion_relation(
     encounter_angular_frequency: Union[float, np.ndarray],
-    encounter_direction_radians: Union[float, np.ndarray],
+    encounter_direction_degrees: Union[float, np.ndarray],
     relative_current_speed: float = 0.0,
-    relative_current_direction: float = 0.0,
+    relative_current_direction_degrees: float = 0.0,
     root: str = "principal",
     depth: Union[float, np.ndarray] = np.inf,
     physics_options: PhysicsOptions = None,
@@ -328,14 +328,15 @@ def inverse_encounter_dispersion_relation(
 ) -> np.ndarray:
     """
     Find the wavenumber magnitude for a given encounter angular frequency and wave direction, as observed by an
-    observer moving relative to the water at `relative_current_speed` in direction `relative_current_direction`
-    (i.e. `relative_current_velocity = ambient_current_velocity - observer_velocity`). Solves for k in:
+    observer moving relative to the water at `relative_current_speed` in direction
+    `relative_current_direction_degrees` (i.e. `relative_current_velocity = ambient_current_velocity -
+    observer_velocity`). Solves for k in:
 
         $$\\omega = s \\cdot \\Omega(k,d) + k \\Delta$$
 
     with $\\Omega$ the intrinsic dispersion relation, $s=+1$ for the `"principal"` root and $s=-1$ for the
     `"secondary"` root, and $\\Delta = V \\cos(\\theta_p - \\theta_V)$ the projection of the relative current onto
-    the wave direction $\\theta_p$ (`encounter_direction_radians`).
+    the wave direction $\\theta_p$ (`encounter_direction_degrees`).
 
     Unlike `inverse_intrinsic_dispersion_relation`, this inversion is not unique: depending on the sign and
     magnitude of $\\Delta$ there can be zero, one, or two solutions for a given frequency and direction -- the
@@ -346,7 +347,9 @@ def inverse_encounter_dispersion_relation(
 
     NOTE:
         - `encounter_angular_frequency` must be non-negative.
-        - `relative_current_speed`/`relative_current_direction` describe a single current shared by every
+        - Direction angles are in degrees, matching the convention used elsewhere in this package (e.g.
+          `linearwavetheory.stokes_theory`), even though frequency stays in rad/s.
+        - `relative_current_speed`/`relative_current_direction_degrees` describe a single current shared by every
           frequency/direction pair in the call (not per-sample), matching the typical use case of correcting a
           whole frequency-direction spectrum for one observer/current.
         - For the shallow and deep water regimes this uses closed-form solutions valid for pure gravity waves;
@@ -354,12 +357,13 @@ def inverse_encounter_dispersion_relation(
 
     :param encounter_angular_frequency: Encounter angular frequency (rad/s), non-negative. Scalar or 1D array.
 
-    :param encounter_direction_radians: Wave direction (rad) in the observer's frame. Scalar or 1D array,
+    :param encounter_direction_degrees: Wave direction (degrees) in the observer's frame. Scalar or 1D array,
         broadcastable against `encounter_angular_frequency`.
 
     :param relative_current_speed: Magnitude of the relative current velocity (m/s). Scalar, default 0.
 
-    :param relative_current_direction: Direction (rad) of the relative current velocity. Scalar, default 0.
+    :param relative_current_direction_degrees: Direction (degrees) of the relative current velocity. Scalar,
+        default 0.
 
     :param root: Which root to return, `"principal"` (default) or `"secondary"`.
 
@@ -374,7 +378,7 @@ def inverse_encounter_dispersion_relation(
     :return: The wavenumber magnitude as a 1D numpy array, or NaN where no root of the requested kind exists.
     """
     encounter_angular_frequency = atleast_1d(encounter_angular_frequency)
-    encounter_direction_radians = atleast_1d(encounter_direction_radians)
+    encounter_direction_degrees = atleast_1d(encounter_direction_degrees)
     depth = atleast_1d(depth)
 
     if np.any(encounter_angular_frequency < 0.0):
@@ -392,7 +396,7 @@ def inverse_encounter_dispersion_relation(
     )
 
     delta = relative_current_speed * np.cos(
-        encounter_direction_radians - relative_current_direction
+        np.deg2rad(encounter_direction_degrees - relative_current_direction_degrees)
     )
 
     if physics_options.wave_regime == "shallow":
