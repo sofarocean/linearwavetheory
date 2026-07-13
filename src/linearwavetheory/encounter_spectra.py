@@ -21,6 +21,7 @@ from .dispersion import (
     inverse_encounter_dispersion_relation,
     intrinsic_dispersion_relation,
     intrinsic_group_speed,
+    _encounter_physics_options,
 )
 
 
@@ -57,6 +58,8 @@ def encounter_spectrum_to_intrinsic_1d(
         - For `root="secondary"`, the intrinsic direction may actually be `mean_direction_degrees + 180` wherever
           `Delta >= 0` (the "swept away" branch) -- this is not corrected here. `"principal"` is the recommended
           default; `"secondary"` is provided for completeness/testing.
+        - Surface tension is not yet supported: `physics_options.kinematic_surface_tension` is ignored and
+          treated as 0 regardless of what is passed in, matching `inverse_encounter_dispersion_relation`.
 
     :param encounter_angular_frequency: Encounter angular frequency (rad/s), non-negative. 1D array.
 
@@ -82,6 +85,11 @@ def encounter_spectrum_to_intrinsic_1d(
         interpolated onto a regular grid -- the caller regrids if needed (see `encounter_spectrum_to_intrinsic_2d`
         for the per-direction-bin regridding approach, which applies identically here with a single bin).
     """
+    # Forces kinematic_surface_tension to 0 -- surface tension is not yet supported on the encounter-frame path
+    # (see NOTE above). Resolved once here so the wavenumber solve and the intrinsic_dispersion_relation/
+    # intrinsic_group_speed calls below stay mutually consistent.
+    physics_options = _encounter_physics_options(physics_options)
+
     wavenumber = inverse_encounter_dispersion_relation(
         encounter_angular_frequency,
         mean_direction_degrees,
@@ -161,7 +169,8 @@ def encounter_spectrum_to_intrinsic_2d(
     NOTE:
         - Frequencies for which the requested root does not exist, or that fall outside a given direction bin's
           valid range after regridding, are NaN in the output, not dropped or extrapolated.
-        - See `encounter_spectrum_to_intrinsic_1d` for the `root="secondary"` direction caveat.
+        - See `encounter_spectrum_to_intrinsic_1d` for the `root="secondary"` direction caveat, and for the
+          surface-tension limitation (not yet supported; treated as 0 regardless of `physics_options`).
 
     :param encounter_angular_frequency: Encounter angular frequency (rad/s), non-negative. 1D array of length
         `n_frequency`.

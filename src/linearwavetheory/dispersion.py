@@ -316,6 +316,32 @@ def encounter_dispersion_relation(
 
 
 @jit(**numba_default)
+def _encounter_physics_options(
+    physics_options: PhysicsOptions = None,
+) -> PhysicsOptions:
+    """
+    Resolve physics_options to a concrete PhysicsOptions with surface tension forced to zero.
+
+    NOTE: The encounter-frame functions (`inverse_encounter_dispersion_relation` and
+    `linearwavetheory.encounter_spectra.encounter_spectrum_to_intrinsic_1d`/`_2d`) do not yet support surface
+    tension -- their deep/shallow closed-form solutions were derived for pure gravity waves only. This forces
+    `kinematic_surface_tension` to 0 regardless of the input, so that the wavenumber solve and any downstream
+    `intrinsic_dispersion_relation`/`intrinsic_group_speed` calls built on top of it stay mutually consistent.
+
+    ** Internal function. **
+    """
+    _, physics_options, _ = _parse_options(None, physics_options, None)
+    return PhysicsOptions(
+        0.0,
+        physics_options.grav,
+        physics_options.wave_type,
+        physics_options.wave_regime,
+        physics_options.density,
+        physics_options.wave_regime_enum,
+    )
+
+
+@jit(**numba_default)
 def inverse_encounter_dispersion_relation(
     encounter_angular_frequency: Union[float, np.ndarray],
     encounter_direction_degrees: Union[float, np.ndarray],
@@ -352,8 +378,8 @@ def inverse_encounter_dispersion_relation(
         - `relative_current_speed`/`relative_current_direction_degrees` describe a single current shared by every
           frequency/direction pair in the call (not per-sample), matching the typical use case of correcting a
           whole frequency-direction spectrum for one observer/current.
-        - For the shallow and deep water regimes this uses closed-form solutions valid for pure gravity waves;
-          surface tension is only accounted for in the `intermediate` regime (the general numerical solve).
+        - Surface tension is not yet supported: `physics_options.kinematic_surface_tension` is ignored and
+          treated as 0 regardless of what is passed in (including via `wave_type`), for all wave regimes.
 
     :param encounter_angular_frequency: Encounter angular frequency (rad/s), non-negative. Scalar or 1D array.
 
@@ -391,9 +417,8 @@ def inverse_encounter_dispersion_relation(
     else:
         raise ValueError("root must be one of 'principal' or 'secondary'")
 
-    numerical_options, physics_options, _ = _parse_options(
-        numerical_options, physics_options, None
-    )
+    numerical_options, _, _ = _parse_options(numerical_options, None, None)
+    physics_options = _encounter_physics_options(physics_options)
 
     delta = relative_current_speed * np.cos(
         np.deg2rad(encounter_direction_degrees - relative_current_direction_degrees)

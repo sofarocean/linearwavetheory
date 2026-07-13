@@ -609,3 +609,47 @@ def test_inverse_encounter_dispersion_relation_broadcasting():
     )
     assert k_array_depth.shape == freq.shape
     assert np.all(np.isfinite(k_array_depth))
+
+
+def test_inverse_encounter_dispersion_relation_ignores_surface_tension():
+    """
+    Surface tension is not yet supported on the encounter-frame path: results must be identical regardless of
+    physics_options.kinematic_surface_tension / wave_type, even at capillary-range frequencies where tension
+    would otherwise matter (see inverse_intrinsic_dispersion_relation, which does account for it).
+    """
+    high_freq = 500.0  # capillary range, where tension has a large effect on the plain intrinsic relation
+    gravity_only = physics_options(wave_type="gravity")
+    gravity_capillary = physics_options(wave_type="gravity-capillary")
+
+    for regime in ["shallow", "intermediate", "deep"]:
+        opts_gravity = physics_options(wave_type="gravity", wave_regime=regime)
+        opts_capillary = physics_options(
+            wave_type="gravity-capillary", wave_regime=regime
+        )
+        depth = 5.0 if regime == "shallow" else (5000.0 if regime == "deep" else 20.0)
+
+        k_gravity = ld.inverse_encounter_dispersion_relation(
+            high_freq,
+            0.0,
+            relative_current_speed=0.5,
+            depth=depth,
+            physics_options=opts_gravity,
+        )
+        k_capillary = ld.inverse_encounter_dispersion_relation(
+            high_freq,
+            0.0,
+            relative_current_speed=0.5,
+            depth=depth,
+            physics_options=opts_capillary,
+        )
+        assert_allclose(k_gravity, k_capillary, atol=0, rtol=1e-12)
+
+    # Sanity check that this frequency actually is high enough for tension to matter for the *plain* intrinsic
+    # relation -- otherwise the check above would be vacuous.
+    k_ref_gravity = ld.inverse_intrinsic_dispersion_relation(
+        high_freq, 100.0, physics_options=gravity_only
+    )
+    k_ref_capillary = ld.inverse_intrinsic_dispersion_relation(
+        high_freq, 100.0, physics_options=gravity_capillary
+    )
+    assert not np.allclose(k_ref_gravity, k_ref_capillary, rtol=1e-6)
