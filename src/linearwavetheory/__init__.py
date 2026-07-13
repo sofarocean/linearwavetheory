@@ -46,6 +46,8 @@ Functions
     angular frequency and depth
 - `linearwavetheory.dispersion.encounter_dispersion_relation`, calculate angular frequency for a given wavenumber
 vector, depth, and current velocity
+- `linearwavetheory.dispersion.inverse_encounter_dispersion_relation`, calculate wavenumber magnitude for a given
+    encounter angular frequency, direction, depth and relative current
 - `linearwavetheory.dispersion.intrinsic_group_speed`, calculate the group speed given wave number magnitude and depth.
 - `linearwavetheory.dispersion.intrinsic_phase_speed`, calculate the phase speed given wave number magnitude  and depth.
 - `linearwavetheory.dispersion.encounter_group_velocity`, calculate the group velocity given wave number vector, depth
@@ -85,6 +87,9 @@ References
 
     Holthuijsen, L. H. (2010). Waves in oceanic and coastal waters. Cambridge university press.
 
+    Peregrine, D. H. (1976). Interaction of water waves and currents. Advances in Applied Mechanics, 16, 9-117.
+    (wave blocking / the fold-point structure used by `inverse_encounter_dispersion_relation`)
+
 
 """
 
@@ -94,6 +99,7 @@ from .dispersion import (
     intrinsic_group_speed,
     intrinsic_phase_speed,
     encounter_dispersion_relation,
+    inverse_encounter_dispersion_relation,
     encounter_phase_speed,
     encounter_group_speed,
 )

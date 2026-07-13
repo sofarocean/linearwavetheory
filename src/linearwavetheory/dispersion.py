@@ -23,6 +23,8 @@ Functions:
 - `inverse_intrinsic_dispersion_relation`, calculate wavenumber magnitude for a given angular frequency and depth
 - `encounter_dispersion_relation`, calculate angular frequency for a given wavenumber vector, depth, and
         current velocity
+- `inverse_encounter_dispersion_relation`, calculate wavenumber magnitude for a given encounter angular frequency,
+        direction, depth and relative current
 - `intrinsic_group_speed`, calculate the group speed given wave number magnitude and depth.
 - `intrinsic_phase_speed`, calculate the phase speed given wave number magnitude  and depth.
 - `encounter_group_velocity`, calculate the group velocity given wave number vector, depth and current velocity.
@@ -34,7 +36,15 @@ Functions:
 
 import numpy as np
 from numba import jit
-from linearwavetheory.settings import PhysicsOptions, NumericalOptions, _parse_options
+
+# Relative import (unlike the rest of this module's absolute `linearwavetheory...` imports): the package is
+# importable both as `linearwavetheory` and as `src.linearwavetheory` (tests use the latter), and since Python
+# then loads settings.py twice under two distinct module identities, an absolute import here would bind to a
+# `PhysicsOptions`/`NumericalOptions` class that numba considers a different (unifiable) type from the one a
+# caller importing via the other path would construct -- causing a "Cannot unify" TypingError whenever a
+# non-default options object is passed in. A relative import always resolves within the caller's own import
+# namespace, avoiding the mismatch.
+from .settings import PhysicsOptions, NumericalOptions, _parse_options
 from linearwavetheory._array_shape_preprocessing import (
     atleast_1d,
     _vector_preprocessing,
@@ -52,6 +62,9 @@ from linearwavetheory._dispersion_ufuncs import (
     _inverse_intrinsic_dispersion_relation_shallow,
     _inverse_intrinsic_dispersion_relation_intermediate,
     _inverse_intrinsic_dispersion_relation_deep,
+    _inverse_encounter_dispersion_relation_shallow,
+    _inverse_encounter_dispersion_relation_intermediate,
+    _inverse_encounter_dispersion_relation_deep,
 )
 
 from linearwavetheory._numba_settings import numba_default
@@ -300,6 +313,118 @@ def encounter_dispersion_relation(
     )
 
     return intrinsic_angular_frequency + doppler_shift
+
+
+@jit(**numba_default)
+def inverse_encounter_dispersion_relation(
+    encounter_angular_frequency: Union[float, np.ndarray],
+    encounter_direction_radians: Union[float, np.ndarray],
+    relative_current_speed: float = 0.0,
+    relative_current_direction: float = 0.0,
+    root: str = "principal",
+    depth: Union[float, np.ndarray] = np.inf,
+    physics_options: PhysicsOptions = None,
+    numerical_options: NumericalOptions = None,
+) -> np.ndarray:
+    """
+    Find the wavenumber magnitude for a given encounter angular frequency and wave direction, as observed by an
+    observer moving relative to the water at `relative_current_speed` in direction `relative_current_direction`
+    (i.e. `relative_current_velocity = ambient_current_velocity - observer_velocity`). Solves for k in:
+
+        $$\\omega = s \\cdot \\Omega(k,d) + k \\Delta$$
+
+    with $\\Omega$ the intrinsic dispersion relation, $s=+1$ for the `"principal"` root and $s=-1$ for the
+    `"secondary"` root, and $\\Delta = V \\cos(\\theta_p - \\theta_V)$ the projection of the relative current onto
+    the wave direction $\\theta_p$ (`encounter_direction_radians`).
+
+    Unlike `inverse_intrinsic_dispersion_relation`, this inversion is not unique: depending on the sign and
+    magnitude of $\\Delta$ there can be zero, one, or two solutions for a given frequency and direction -- the
+    "principal" root (the Doppler-shifted intrinsic wave) and the "secondary" root (a higher-wavenumber wave swept
+    along by the current). Non-existent roots return NaN rather than raising. See the design note "Estimating
+    wavenumber from encounter frequency" for the full derivation; the finite-depth non-existence condition is the
+    wave-blocking "fold point" familiar from wave-current interaction theory (c.f. Peregrine, 1976).
+
+    NOTE:
+        - `encounter_angular_frequency` must be non-negative.
+        - `relative_current_speed`/`relative_current_direction` describe a single current shared by every
+          frequency/direction pair in the call (not per-sample), matching the typical use case of correcting a
+          whole frequency-direction spectrum for one observer/current.
+        - For the shallow and deep water regimes this uses closed-form solutions valid for pure gravity waves;
+          surface tension is only accounted for in the `intermediate` regime (the general numerical solve).
+
+    :param encounter_angular_frequency: Encounter angular frequency (rad/s), non-negative. Scalar or 1D array.
+
+    :param encounter_direction_radians: Wave direction (rad) in the observer's frame. Scalar or 1D array,
+        broadcastable against `encounter_angular_frequency`.
+
+    :param relative_current_speed: Magnitude of the relative current velocity (m/s). Scalar, default 0.
+
+    :param relative_current_direction: Direction (rad) of the relative current velocity. Scalar, default 0.
+
+    :param root: Which root to return, `"principal"` (default) or `"secondary"`.
+
+    :param depth: depth in meters. Scalar or 1D array, broadcastable against `encounter_angular_frequency`.
+
+    :param physics_options: A PhysicsOptions object containing the physical parameters. If None, the default values
+        are used.
+
+    :param numerical_options: A NumericalOptions object containing the numerical parameters (only used for the
+        `intermediate` wave regime). If None, the default values are used.
+
+    :return: The wavenumber magnitude as a 1D numpy array, or NaN where no root of the requested kind exists.
+    """
+    encounter_angular_frequency = atleast_1d(encounter_angular_frequency)
+    encounter_direction_radians = atleast_1d(encounter_direction_radians)
+    depth = atleast_1d(depth)
+
+    if np.any(encounter_angular_frequency < 0.0):
+        raise ValueError("encounter_angular_frequency must be non-negative.")
+
+    if root == "principal":
+        principal = 1
+    elif root == "secondary":
+        principal = 0
+    else:
+        raise ValueError("root must be one of 'principal' or 'secondary'")
+
+    numerical_options, physics_options, _ = _parse_options(
+        numerical_options, physics_options, None
+    )
+
+    delta = relative_current_speed * np.cos(
+        encounter_direction_radians - relative_current_direction
+    )
+
+    if physics_options.wave_regime == "shallow":
+        return _inverse_encounter_dispersion_relation_shallow(
+            encounter_angular_frequency,
+            depth,
+            delta,
+            physics_options.grav,
+            principal,
+        )
+
+    elif physics_options.wave_regime == "deep":
+        return _inverse_encounter_dispersion_relation_deep(
+            encounter_angular_frequency,
+            depth,
+            delta,
+            physics_options.grav,
+            principal,
+        )
+
+    else:
+        return _inverse_encounter_dispersion_relation_intermediate(
+            encounter_angular_frequency,
+            depth,
+            delta,
+            principal,
+            physics_options.kinematic_surface_tension,
+            physics_options.grav,
+            numerical_options.maximum_number_of_iterations,
+            numerical_options.relative_tolerance,
+            numerical_options.absolute_tolerance,
+        )
 
 
 @jit(**numba_default)
